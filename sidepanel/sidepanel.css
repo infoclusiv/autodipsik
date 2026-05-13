@@ -177,6 +177,23 @@ select {
   color: var(--warn);
 }
 
+.status-pill.neutral {
+  background: #ece6db;
+  color: var(--muted);
+}
+
+.status-pill.success {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.inline-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
 .timeline-item,
 .event-item {
   border-top: 1px solid var(--border);

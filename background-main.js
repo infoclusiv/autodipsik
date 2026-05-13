@@ -4,13 +4,17 @@ importScripts(
   "core/errors.js",
   "core/storage.js",
   "core/telemetry.js",
+  "core/gatewayProtocol.js",
+  "core/gatewayClient.js",
   "core/messaging.js",
   "core/tabManager.js",
   "core/workflowRunner.js",
   "core/diagnosticStore.js",
   "sites/newsite/config.js",
   "sites/newsite/contracts.js",
-  "sites/newsite/siteProfile.js"
+  "sites/newsite/siteProfile.js",
+  "sites/deepseek/config.js",
+  "sites/deepseek/siteProfile.js"
 );
 
 (function initBackground(globalScope) {
@@ -23,8 +27,13 @@ importScripts(
   const TabManager = NewSiteCore.TabManager;
   const DiagnosticStore = NewSiteCore.DiagnosticStore;
   const Storage = NewSiteCore.Storage;
+  const GatewayClient = NewSiteCore.GatewayClient;
+  const GatewayProtocol = NewSiteCore.GatewayProtocol;
   const siteConfig = NewSiteAutomation.NEWSITE_CONFIG;
   const SiteProfile = NewSiteAutomation.SiteProfile;
+  const DeepSeekAutomation = globalScope.DeepSeekAutomation;
+  const deepSeekConfig = DeepSeekAutomation.DEEPSEEK_CONFIG;
+  const DeepSeekSiteProfile = DeepSeekAutomation.DeepSeekSiteProfile;
 
   async function updateRuntimeStatus(extra) {
     const activeTab = await TabManager.getActiveTab();
@@ -74,6 +83,135 @@ importScripts(
         ]
       });
     }
+  }
+
+  async function forwardToDeepSeekTab(message) {
+    const activeTab = await TabManager.getActiveTab();
+    if (!activeTab || !activeTab.id) {
+      throw Errors.createError("ACTIVE_TAB_NOT_FOUND", "No active tab available.", {
+        expected: "An active DeepSeek tab should be open in the current window.",
+        actual: "No active tab was found.",
+        suggestedFix: "Open DeepSeek and keep its tab active before retrying."
+      });
+    }
+
+    if (!deepSeekConfig.isDeepSeekUrl(activeTab.url || "")) {
+      throw Errors.createError("ACTIVE_TAB_NOT_DEEPSEEK", "The active tab is not DeepSeek.", {
+        expected: "The active tab URL should match https://chat.deepseek.com/*.",
+        actual: activeTab.url || "Unknown URL",
+        suggestedFix: "Switch to a DeepSeek tab and retry the upload."
+      });
+    }
+
+    await Telemetry.emit({
+      eventName: TELEMETRY_EVENTS.DEEPSEEK_TAB_DETECTED,
+      traceId: message.traceId,
+      siteId: "deepseek",
+      component: "background",
+      level: "info",
+      message: "DeepSeek tab detected",
+      data: { tabId: activeTab.id, url: activeTab.url || "" }
+    });
+
+    try {
+      return await chrome.tabs.sendMessage(activeTab.id, message);
+    } catch (error) {
+      throw Errors.createError("CONTENT_SCRIPT_NOT_AVAILABLE", "DeepSeek content script is unavailable.", {
+        expected: "The DeepSeek content script should be active on the current tab.",
+        actual: error.message,
+        suggestedFix: "Reload the DeepSeek tab and the extension, then retry."
+      });
+    }
+  }
+
+  async function ensureGatewayConnection() {
+    try {
+      return await GatewayClient.connect();
+    } catch (error) {
+      throw Errors.toStructuredError(error);
+    }
+  }
+
+  async function handleGatewaySelectFile(traceId) {
+    const response = await GatewayClient.request(
+      GatewayProtocol.GATEWAY_MESSAGE_TYPES.FILE_PICKER_OPEN_REQUEST,
+      {
+        allowedExtensions: [".xlsx", ".xls", ".csv"],
+        dialogTitle: "Select Excel file to attach"
+      }
+    );
+    return {
+      status: "completed",
+      traceId: traceId,
+      gatewayStatus: await GatewayClient.getStatus(),
+      file: response.payload || null
+    };
+  }
+
+  async function handleGatewayExecuteUpload(traceId) {
+    await Telemetry.emit({
+      eventName: TELEMETRY_EVENTS.DEEPSEEK_EXECUTE_CLICKED,
+      traceId: traceId,
+      siteId: "deepseek",
+      component: "background",
+      level: "info",
+      message: "DeepSeek upload execution requested"
+    });
+
+    const gatewayStatus = await GatewayClient.getStatus();
+    const selectedFile = gatewayStatus.selectedFile;
+    if (!selectedFile || !selectedFile.fileId) {
+      throw Errors.createError("FILE_NOT_SELECTED", "No file has been selected in the Python gateway.", {
+        expected: "A file should be selected before executing the upload.",
+        actual: "The gateway has no selected file metadata.",
+        suggestedFix: "Use the Select Excel File button before clicking Execute."
+      });
+    }
+
+    const fileResponse = await GatewayClient.request(
+      GatewayProtocol.GATEWAY_MESSAGE_TYPES.FILE_CONTENT_REQUEST,
+      {
+        fileId: selectedFile.fileId,
+        encoding: "base64"
+      }
+    );
+
+    await Telemetry.emit({
+      eventName: TELEMETRY_EVENTS.DEEPSEEK_ATTACH_STARTED,
+      traceId: traceId,
+      siteId: "deepseek",
+      component: "background",
+      level: "info",
+      message: "Sending file to DeepSeek content script",
+      data: { fileName: selectedFile.name, sizeBytes: selectedFile.sizeBytes }
+    });
+
+    const attachResult = await forwardToDeepSeekTab({
+      type: MESSAGE_TYPES.DEEPSEEK_ATTACH_FILE,
+      traceId: traceId,
+      file: fileResponse.payload
+    });
+
+    await Telemetry.emit({
+      eventName: attachResult && attachResult.status === "completed"
+        ? TELEMETRY_EVENTS.DEEPSEEK_ATTACH_COMPLETED
+        : TELEMETRY_EVENTS.DEEPSEEK_ATTACH_FAILED,
+      traceId: traceId,
+      siteId: "deepseek",
+      component: "background",
+      level: attachResult && attachResult.status === "completed" ? "info" : "error",
+      message: attachResult && attachResult.status === "completed"
+        ? "DeepSeek file attached"
+        : "DeepSeek file attach failed",
+      data: attachResult || {}
+    });
+
+    return {
+      status: "completed",
+      traceId: traceId,
+      gatewayStatus: await GatewayClient.getStatus(),
+      attachResult: attachResult
+    };
   }
 
   async function handleMessage(message) {
@@ -144,7 +282,10 @@ importScripts(
         });
 
         const profile = await SiteProfile.loadSiteProfile();
-        const diagnostics = await DiagnosticStore.exportDiagnostics(profile, siteConfig);
+        const diagnostics = await DiagnosticStore.exportDiagnostics(profile, siteConfig, {
+          deepseekProfile: DeepSeekSiteProfile.cloneDefaultProfile(),
+          gatewayStatus: await GatewayClient.getStatus()
+        });
 
         await Telemetry.emit({
           eventName: TELEMETRY_EVENTS.DIAGNOSTIC_EXPORT_COMPLETED,
@@ -166,6 +307,45 @@ importScripts(
       case MESSAGE_TYPES.PAGE_STATE_DETECT:
       case MESSAGE_TYPES.RUN_AUTOMATION:
         return forwardToActiveTab(message);
+      case MESSAGE_TYPES.GATEWAY_STATUS_GET:
+        return {
+          status: "completed",
+          traceId: traceId,
+          gatewayStatus: await GatewayClient.getStatus()
+        };
+      case MESSAGE_TYPES.GATEWAY_CONNECT:
+        return {
+          status: "completed",
+          traceId: traceId,
+          gatewayStatus: await ensureGatewayConnection()
+        };
+      case MESSAGE_TYPES.GATEWAY_DISCONNECT:
+        return {
+          status: "completed",
+          traceId: traceId,
+          gatewayStatus: await GatewayClient.disconnect()
+        };
+      case MESSAGE_TYPES.GATEWAY_SELECT_FILE:
+        await ensureGatewayConnection();
+        return handleGatewaySelectFile(traceId);
+      case MESSAGE_TYPES.GATEWAY_EXECUTE_UPLOAD:
+        await ensureGatewayConnection();
+        return handleGatewayExecuteUpload(traceId);
+      case MESSAGE_TYPES.GATEWAY_EXPORT_DIAGNOSTICS: {
+        const diagnostics = await DiagnosticStore.exportDiagnostics(
+          await SiteProfile.loadSiteProfile(),
+          siteConfig,
+          {
+            deepseekProfile: DeepSeekSiteProfile.cloneDefaultProfile(),
+            gatewayStatus: await GatewayClient.getStatus()
+          }
+        );
+        return {
+          status: "completed",
+          traceId: traceId,
+          diagnostics: diagnostics
+        };
+      }
       default:
         throw Errors.createError("UNSUPPORTED_MESSAGE", "Unsupported background message type.", {
           actual: message.type

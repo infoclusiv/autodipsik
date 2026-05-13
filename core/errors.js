@@ -27,6 +27,8 @@
       message: input.message || "Unexpected error",
       expected: input.expected || "",
       actual: input.actual || "",
+      recoverable: typeof input.recoverable === "boolean" ? input.recoverable : true,
+      suggestedFix: input.suggestedFix || "",
       probableCause: input.probableCause || "",
       selectorName: input.selectorName || "",
       selector: input.selector || "",

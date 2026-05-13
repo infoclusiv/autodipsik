@@ -43,13 +43,15 @@
     };
   }
 
-  async function exportDiagnostics(activeProfile, siteConfig) {
+  async function exportDiagnostics(activeProfile, siteConfig, extra) {
     const manifest = chrome.runtime.getManifest();
     const events = await Telemetry.getRecentEvents();
     const lastWorkflow = await Storage.getValue(STORAGE_KEYS.LAST_WORKFLOW, null);
     const selectorHealth = await Storage.getValue(STORAGE_KEYS.SELECTOR_HEALTH, []);
     const pageStateHistory = await Storage.getValue(STORAGE_KEYS.PAGE_STATE_HISTORY, []);
     const errors = await Storage.getValue(STORAGE_KEYS.ERROR_LOG, []);
+    const gatewayStatus = await Storage.getValue(STORAGE_KEYS.GATEWAY_STATUS, null);
+    const selectedGatewayFile = await Storage.getValue(STORAGE_KEYS.GATEWAY_SELECTED_FILE, null);
 
     return {
       generatedAt: new Date().toISOString(),
@@ -69,7 +71,12 @@
       selectorHealth: selectorHealth,
       pageStateHistory: pageStateHistory,
       errors: errors,
-      aiDebugSummary: buildAiDebugSummary(lastWorkflow, events, errors)
+      gateway: {
+        status: gatewayStatus,
+        selectedFile: selectedGatewayFile
+      },
+      aiDebugSummary: buildAiDebugSummary(lastWorkflow, events, errors),
+      extra: extra || {}
     };
   }
 

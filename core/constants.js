@@ -11,7 +11,14 @@
     RUN_AUTOMATION: "NEWSITE_RUN_AUTOMATION",
     RUNTIME_STATUS_GET: "NEWSITE_RUNTIME_STATUS_GET",
     DIAGNOSTICS_GET: "NEWSITE_DIAGNOSTICS_GET",
-    EXPORT_DIAGNOSTICS: "NEWSITE_EXPORT_DIAGNOSTICS"
+    EXPORT_DIAGNOSTICS: "NEWSITE_EXPORT_DIAGNOSTICS",
+    GATEWAY_STATUS_GET: "AUTODIPSIK_GATEWAY_STATUS_GET",
+    GATEWAY_CONNECT: "AUTODIPSIK_GATEWAY_CONNECT",
+    GATEWAY_DISCONNECT: "AUTODIPSIK_GATEWAY_DISCONNECT",
+    GATEWAY_SELECT_FILE: "AUTODIPSIK_GATEWAY_SELECT_FILE",
+    GATEWAY_EXECUTE_UPLOAD: "AUTODIPSIK_GATEWAY_EXECUTE_UPLOAD",
+    GATEWAY_EXPORT_DIAGNOSTICS: "AUTODIPSIK_GATEWAY_EXPORT_DIAGNOSTICS",
+    DEEPSEEK_ATTACH_FILE: "AUTODIPSIK_ATTACH_FILE_TO_DEEPSEEK"
   };
 
   NewSiteCore.STORAGE_KEYS = {
@@ -22,7 +29,11 @@
     PAGE_STATE_HISTORY: "page_state_history",
     ERROR_LOG: "error_log",
     RUNTIME_STATUS: "runtime_status",
-    DIAGNOSTIC_SNAPSHOT: "diagnostic_snapshot"
+    DIAGNOSTIC_SNAPSHOT: "diagnostic_snapshot",
+    GATEWAY_STATUS: "gateway_status",
+    GATEWAY_EVENTS: "gateway_events",
+    GATEWAY_SELECTED_FILE: "gateway_selected_file",
+    DEEPSEEK_SITE_PROFILE: "deepseek_site_profile"
   };
 
   NewSiteCore.TELEMETRY_EVENTS = {
@@ -49,6 +60,21 @@
     WORKFLOW_COMPLETED: "site.workflow.completed",
     WORKFLOW_FAILED: "site.workflow.failed",
     DIAGNOSTIC_EXPORT_STARTED: "diagnostic.export.started",
-    DIAGNOSTIC_EXPORT_COMPLETED: "diagnostic.export.completed"
+    DIAGNOSTIC_EXPORT_COMPLETED: "diagnostic.export.completed",
+    GATEWAY_CONNECTING: "extension.gateway.connecting",
+    GATEWAY_CONNECTED: "extension.gateway.connected",
+    GATEWAY_DISCONNECTED: "extension.gateway.disconnected",
+    GATEWAY_RECONNECTING: "extension.gateway.reconnecting",
+    GATEWAY_MESSAGE_SENT: "extension.gateway.message.sent",
+    GATEWAY_MESSAGE_RECEIVED: "extension.gateway.message.received",
+    GATEWAY_REQUEST_FAILED: "extension.gateway.request.failed",
+    GATEWAY_FILE_SELECTED: "extension.gateway.file.selected",
+    DEEPSEEK_EXECUTE_CLICKED: "extension.deepseek.execute.clicked",
+    DEEPSEEK_TAB_DETECTED: "extension.deepseek.tab.detected",
+    DEEPSEEK_ATTACH_STARTED: "extension.deepseek.attach.started",
+    DEEPSEEK_ATTACH_COMPLETED: "extension.deepseek.attach.completed",
+    DEEPSEEK_ATTACH_FAILED: "extension.deepseek.attach.failed",
+    DEEPSEEK_FILE_INPUT_FOUND: "extension.deepseek.file_input.found",
+    DEEPSEEK_FILE_INPUT_NOT_FOUND: "extension.deepseek.file_input.not_found"
   };
 })(globalThis);

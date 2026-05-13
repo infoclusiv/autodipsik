@@ -8,6 +8,7 @@ Chrome MV3 extension scaffold for discovering and stabilizing automation against
 - The extension is isolated under `newsite-automation-extension/`.
 - Placeholder site values are still in use because the real website was not provided yet.
 - The current MVP focuses on modular architecture, observability, selector testing, page-state detection, dry-run workflow execution, and diagnostic export.
+- A DeepSeek upload workflow now exists with a local Python WebSocket gateway for Excel attachment.
 
 ## Assumptions
 
@@ -27,23 +28,52 @@ newsite-automation-extension/
   manifest.json
   README.md
   background-main.js
+  app-python/
   core/
+  sites/deepseek/
   sites/newsite/
   sidepanel/
 ```
+
+## DeepSeek Gateway Workflow
+
+The repository now includes a first MVP for attaching Excel files into `https://chat.deepseek.com/` through a local Python gateway.
+
+Main pieces:
+
+- `app-python/` local WebSocket server on `ws://127.0.0.1:8765`
+- `sidepanel/deepseekUpload/` sidepanel controls for connect, select file, execute, and export diagnostics
+- `sites/deepseek/` content-script module that injects the selected file into the DeepSeek file input
+
+## How To Run The Python Gateway
+
+1. Open a terminal in this repository.
+2. Install the Python dependency:
+   `pip install -r app-python/requirements.txt`
+3. Start the gateway:
+   `python app-python/run_gateway.py`
+4. Confirm you see:
+   `Autodipsik Python Gateway running on ws://127.0.0.1:8765`
 
 ## How To Load In Chrome
 
 1. Open `chrome://extensions`.
 2. Enable Developer Mode.
 3. Choose Load unpacked.
-4. Select the folder `newsite-automation-extension`.
-5. Open any matching website tab and then open the extension side panel.
+4. Select this repository folder.
+5. Use Reload after code changes.
+6. Open `https://chat.deepseek.com/` and then open the extension side panel.
 
 ## Manual Testing Checklist
 
 - [ ] Extension loads in Chrome.
 - [ ] Side panel opens.
+- [ ] Python gateway starts locally.
+- [ ] DeepSeek Upload tab shows connected status after clicking `Connect`.
+- [ ] `Select Excel File` opens the native picker.
+- [ ] A valid `.xlsx`, `.xls`, or `.csv` appears in the sidepanel after selection.
+- [ ] `Execute` attaches the selected file to the active DeepSeek tab.
+- [ ] `Export Diagnostics` downloads a JSON snapshot with gateway and extension state.
 - [ ] Default profile loads.
 - [ ] Profile can be saved.
 - [ ] Selector test works on the target website.
@@ -83,3 +113,6 @@ newsite-automation-extension/
 - The real website selectors are still placeholders and must be configured manually.
 - The main workflow is safe-by-default and only performs real clicks when the configured selectors are valid.
 - Page-state detection is heuristic until real selectors are defined.
+- The DeepSeek DOM can change at any time, so the initial file-input selector may need adjustment.
+- The current diagnostics export is a JSON snapshot rather than a multi-file packaged folder.
+- Browser validation on the real DeepSeek UI still requires manual verification in Chrome.

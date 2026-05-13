@@ -15,6 +15,7 @@
   ],
   "host_permissions": [
     "https://example.com/*",
+    "https://chat.deepseek.com/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
   ],
@@ -42,6 +43,25 @@
         "sites/newsite/pageState.js",
         "sites/newsite/automator.js",
         "sites/newsite/content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://chat.deepseek.com/*"
+      ],
+      "js": [
+        "core/config.js",
+        "core/constants.js",
+        "core/errors.js",
+        "core/storage.js",
+        "core/telemetry.js",
+        "core/diagnosticStore.js",
+        "sites/deepseek/config.js",
+        "sites/deepseek/siteProfile.js",
+        "sites/deepseek/selectors.js",
+        "sites/deepseek/domHelpers.js",
+        "sites/deepseek/content.js"
       ],
       "run_at": "document_idle"
     }
