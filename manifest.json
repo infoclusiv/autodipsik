@@ -1,0 +1,55 @@
+{
+  "manifest_version": 3,
+  "name": "New Website Automation Lab",
+  "version": "0.1.0",
+  "description": "Automation lab extension for a new website before integration into autohom.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "sidePanel",
+    "scripting",
+    "downloads",
+    "alarms",
+    "notifications",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://example.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background-main.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://example.com/*"
+      ],
+      "js": [
+        "core/config.js",
+        "core/constants.js",
+        "core/errors.js",
+        "core/storage.js",
+        "core/telemetry.js",
+        "core/workflowRunner.js",
+        "core/diagnosticStore.js",
+        "sites/newsite/config.js",
+        "sites/newsite/siteProfile.js",
+        "sites/newsite/contracts.js",
+        "sites/newsite/selectors.js",
+        "sites/newsite/domHelpers.js",
+        "sites/newsite/pageState.js",
+        "sites/newsite/automator.js",
+        "sites/newsite/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+  "action": {
+    "default_title": "New Website Automation Lab"
+  }
+}

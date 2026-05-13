@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Website Automation Lab</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div>
+        <h1>New Website Automation Lab</h1>
+        <p class="subtitle">Developer-focused control room for the new site module</p>
+      </div>
+      <div class="status-grid">
+        <div><span>Status</span><strong id="extension-status">Loading...</strong></div>
+        <div><span>Site</span><strong id="current-site">newsite</strong></div>
+        <div><span>URL</span><strong id="active-tab-url">Unknown</strong></div>
+      </div>
+    </header>
+
+    <nav class="tab-bar">
+      <button class="tab-button is-active" data-tab="profile">Site Profile</button>
+      <button class="tab-button" data-tab="automation">Automation Tester</button>
+      <button class="tab-button" data-tab="diagnostics">Diagnostics</button>
+    </nav>
+
+    <main class="panel-stack">
+      <section class="panel is-active" data-panel="profile">
+        <div id="profile-editor-root"></div>
+      </section>
+      <section class="panel" data-panel="automation">
+        <div id="automation-tester-root"></div>
+      </section>
+      <section class="panel" data-panel="diagnostics">
+        <div id="diagnostics-root"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="../core/config.js"></script>
+  <script src="../core/constants.js"></script>
+  <script src="../core/errors.js"></script>
+  <script src="../core/storage.js"></script>
+  <script src="../core/telemetry.js"></script>
+  <script src="../sites/newsite/config.js"></script>
+  <script src="../sites/newsite/contracts.js"></script>
+  <script src="../sites/newsite/siteProfile.js"></script>
+  <script src="shared/dom.js"></script>
+  <script src="shared/toast.js"></script>
+  <script src="shared/logView.js"></script>
+  <script src="shared/chromeMessaging.js"></script>
+  <script src="profileEditor/profileEditor.store.js"></script>
+  <script src="profileEditor/profileEditor.render.js"></script>
+  <script src="profileEditor/profileEditor.controller.js"></script>
+  <script src="automationTester/automationTester.store.js"></script>
+  <script src="automationTester/automationTester.render.js"></script>
+  <script src="automationTester/automationTester.controller.js"></script>
+  <script src="diagnostics/diagnostics.store.js"></script>
+  <script src="diagnostics/diagnostics.render.js"></script>
+  <script src="diagnostics/diagnostics.controller.js"></script>
+  <script src="bootstrap.js"></script>
+</body>
+</html>
