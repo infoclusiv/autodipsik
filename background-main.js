@@ -116,12 +116,32 @@ importScripts(
     try {
       return await chrome.tabs.sendMessage(activeTab.id, message);
     } catch (error) {
-      throw Errors.createError("CONTENT_SCRIPT_NOT_AVAILABLE", "DeepSeek content script is unavailable.", {
+      throw Errors.createError("CONTENT_SCRIPT_UNAVAILABLE", "DeepSeek content script is unavailable.", {
         expected: "The DeepSeek content script should be active on the current tab.",
         actual: error.message,
-        suggestedFix: "Reload the DeepSeek tab and the extension, then retry."
+        activeTabUrl: activeTab.url || "",
+        messageType: message.type,
+        manifestMatchExpectation: deepSeekConfig.urlPattern,
+        contentScriptHandler: "sites/deepseek/content.js",
+        suggestedFix: [
+          "Reload the DeepSeek tab.",
+          "Reload the extension.",
+          "Verify manifest content_scripts for https://chat.deepseek.com/*.",
+          "Verify sites/deepseek/content.js supports the message type."
+        ]
       });
     }
+  }
+
+  async function forwardToSiteAwareTab(message) {
+    const activeTab = await TabManager.getActiveTab();
+    const activeUrl = activeTab && activeTab.url ? activeTab.url : "";
+
+    if (deepSeekConfig.isDeepSeekUrl(activeUrl)) {
+      return forwardToDeepSeekTab(message);
+    }
+
+    return forwardToActiveTab(message);
   }
 
   async function ensureGatewayConnection() {
@@ -219,20 +239,59 @@ importScripts(
       return null;
     }
 
-    if (!input.filePath) {
-      throw Errors.createError("FILE_PATH_REQUIRED", "A file path is required for automation.", {
-        expected: "A local Excel file path should be provided before running automation.",
-        actual: "The automation input did not include filePath."
+    await ensureGatewayConnection();
+
+    const gatewayStatus = await GatewayClient.getStatus();
+    let selectedFile = null;
+
+    if (input.fileId) {
+      selectedFile = {
+        fileId: input.fileId,
+        name: input.fileName || "",
+        extension: input.fileExtension || ""
+      };
+    } else if (gatewayStatus && gatewayStatus.selectedFile) {
+      selectedFile = gatewayStatus.selectedFile;
+    }
+
+    if (!selectedFile && input.filePath) {
+      const fileByPathResponse = await GatewayClient.request(
+        GatewayProtocol.GATEWAY_MESSAGE_TYPES.FILE_CONTENT_BY_PATH_REQUEST,
+        {
+          path: input.filePath
+        }
+      );
+      return fileByPathResponse.payload || null;
+    }
+
+    if (!selectedFile || !selectedFile.fileId) {
+      throw Errors.createError("GATEWAY_FILE_NOT_SELECTED", "No Excel file has been selected through the gateway.", {
+        expected: "Automation Tester should select an Excel file through the gateway before running automation.",
+        actual: "No gateway selectedFile or input.fileId is available.",
+        gatewayStatus: gatewayStatus,
+        suggestedFix: "Click Select Excel File in Automation Tester before running the workflow."
       });
     }
 
-    await ensureGatewayConnection();
+    const allowedExtensions = [".xls", ".xlsx"];
+    if (
+      selectedFile.extension
+      && allowedExtensions.indexOf(String(selectedFile.extension).toLowerCase()) === -1
+    ) {
+      throw Errors.createError("FILE_EXTENSION_NOT_ALLOWED", "The selected file is not an Excel file.", {
+        expected: "One of: " + allowedExtensions.join(", "),
+        actual: selectedFile.extension
+      });
+    }
+
     const fileResponse = await GatewayClient.request(
-      GatewayProtocol.GATEWAY_MESSAGE_TYPES.FILE_CONTENT_BY_PATH_REQUEST,
+      GatewayProtocol.GATEWAY_MESSAGE_TYPES.FILE_CONTENT_REQUEST,
       {
-        path: input.filePath
+        fileId: selectedFile.fileId,
+        encoding: "base64"
       }
     );
+
     return fileResponse.payload || null;
   }
 
@@ -327,13 +386,18 @@ importScripts(
       case MESSAGE_TYPES.SELECTOR_TEST:
       case MESSAGE_TYPES.SELECTOR_TEST_ALL:
       case MESSAGE_TYPES.PAGE_STATE_DETECT:
-        return forwardToActiveTab(message);
+        return forwardToSiteAwareTab(message);
       case MESSAGE_TYPES.RUN_AUTOMATION: {
         const nextMessage = Object.assign({}, message, {
           input: Object.assign({}, message.input || {})
         });
         nextMessage.input.filePayload = await resolveAutomationFilePayload(nextMessage.input);
-        return forwardToActiveTab(nextMessage);
+        const gatewayStatus = await GatewayClient.getStatus();
+        const result = await forwardToDeepSeekTab(nextMessage);
+        if (result && typeof result === "object") {
+          result.gatewayStatus = gatewayStatus;
+        }
+        return result;
       }
       case MESSAGE_TYPES.GATEWAY_STATUS_GET:
         return {

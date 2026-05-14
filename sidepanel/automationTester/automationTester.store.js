@@ -3,12 +3,17 @@
 
   NewSiteSidepanel.AutomationTesterStore = {
     state: {
+      gatewayStatus: null,
+      selectedFile: null,
+      fileSelectionResult: null,
       runtimeStatus: null,
       pageState: null,
       workflowResult: null,
       lastError: null,
       promptText: "",
-      filePath: ""
+      isConnectingGateway: false,
+      isSelectingFile: false,
+      isRunningAutomation: false
     }
   };
 })(globalThis);

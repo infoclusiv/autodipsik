@@ -56,11 +56,14 @@
         "core/errors.js",
         "core/storage.js",
         "core/telemetry.js",
+        "core/workflowRunner.js",
         "core/diagnosticStore.js",
         "sites/deepseek/config.js",
         "sites/deepseek/siteProfile.js",
         "sites/deepseek/selectors.js",
         "sites/deepseek/domHelpers.js",
+        "sites/deepseek/pageState.js",
+        "sites/deepseek/chatAutomator.js",
         "sites/deepseek/content.js"
       ],
       "run_at": "document_idle"

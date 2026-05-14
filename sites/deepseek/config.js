@@ -9,7 +9,7 @@
   }
 
   DeepSeekAutomation.DEEPSEEK_CONFIG = {
-    siteId: "deepseek-chat",
+    siteId: "deepseek",
     displayName: "DeepSeek Chat",
     baseUrl: baseUrl,
     urlPattern: urlPattern,

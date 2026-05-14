@@ -21,7 +21,6 @@
 
   function boot() {
     bindTabs();
-    NewSiteSidepanel.DeepSeekUploadController.mount(Dom.byId("deepseek-upload-root"));
     NewSiteSidepanel.ProfileEditorController.mount(Dom.byId("profile-editor-root"));
     NewSiteSidepanel.AutomationTesterController.mount(Dom.byId("automation-tester-root"));
     NewSiteSidepanel.DiagnosticsController.mount(Dom.byId("diagnostics-root"));

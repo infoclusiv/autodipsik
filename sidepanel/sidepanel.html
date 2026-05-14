@@ -21,16 +21,12 @@
     </header>
 
     <nav class="tab-bar">
-      <button class="tab-button" data-tab="deepseek">DeepSeek Upload</button>
       <button class="tab-button is-active" data-tab="profile">Site Profile</button>
       <button class="tab-button" data-tab="automation">Automation Tester</button>
       <button class="tab-button" data-tab="diagnostics">Diagnostics</button>
     </nav>
 
     <main class="panel-stack">
-      <section class="panel" data-panel="deepseek">
-        <div id="deepseek-upload-root"></div>
-      </section>
       <section class="panel is-active" data-panel="profile">
         <div id="profile-editor-root"></div>
       </section>
@@ -57,9 +53,6 @@
   <script src="shared/toast.js"></script>
   <script src="shared/logView.js"></script>
   <script src="shared/chromeMessaging.js"></script>
-  <script src="deepseekUpload/deepseekUpload.store.js"></script>
-  <script src="deepseekUpload/deepseekUpload.render.js"></script>
-  <script src="deepseekUpload/deepseekUpload.controller.js"></script>
   <script src="profileEditor/profileEditor.store.js"></script>
   <script src="profileEditor/profileEditor.render.js"></script>
   <script src="profileEditor/profileEditor.controller.js"></script>
