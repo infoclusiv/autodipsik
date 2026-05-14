@@ -2,32 +2,43 @@
   const NewSiteAutomation = globalScope.NewSiteAutomation = globalScope.NewSiteAutomation || {};
 
   NewSiteAutomation.SiteProfileContract = {
-    requiredFields: ["siteId", "baseUrl", "urlPattern", "selectors", "timing"],
+    requiredFields: ["siteId", "baseUrl", "urlPattern", "selectors", "timing", "behavior"],
     requiredSelectorsForMainWorkflow: [
-      "processButton",
-      "resultReadyIndicator"
+      "fileInput",
+      "chatInput",
+      "sendButton"
     ],
     optionalSelectors: [
-      "fileInput",
+      "attachButton",
+      "fileAttachedIndicator",
+      "fileNameIndicator",
+      "fileTypeIndicator",
+      "sendButtonDisabledIndicator",
+      "errorBanner",
+      "progressIndicator",
+      "generatingIndicator",
+      "responseContainer",
+      "latestAssistantMessage",
       "uploadButton",
       "downloadButton",
-      "errorBanner",
       "primaryActionButton",
       "secondaryActionButton",
       "confirmButton",
-      "progressIndicator"
+      "processButton",
+      "resultReadyIndicator"
     ]
   };
 
   NewSiteAutomation.RunAutomationCommandContract = {
     type: "NEWSITE_RUN_AUTOMATION",
-    requiredInputFields: ["traceId"],
-    optionalInputFields: ["filePath", "metadata", "dryRun"],
+    requiredInputFields: ["traceId", "filePath", "promptText"],
+    optionalInputFields: ["metadata", "dryRun", "expectedFileExtension", "waitForResponse", "conversationMode"],
     expectedResponse: {
       status: "completed|failed",
       traceId: "string",
       workflowId: "string",
-      error: "object|null"
+      error: "object|null",
+      diagnosticPackage: "object|null"
     }
   };
 

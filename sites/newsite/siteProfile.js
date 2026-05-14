@@ -9,28 +9,59 @@
 
   const DEFAULT_NEWSITE_SITE_PROFILE = {
     siteId: "newsite",
-    version: 1,
-    baseUrl: "https://example.com",
-    urlPattern: "https://example.com/*",
+    version: 2,
+    baseUrl: "https://chat.deepseek.com/",
+    urlPattern: "https://chat.deepseek.com/*",
     selectors: {
       primaryActionButton: "",
       secondaryActionButton: "",
-      fileInput: "",
+      fileInput: 'input[type="file"]',
       uploadButton: "",
       processButton: "",
       confirmButton: "",
       progressIndicator: "",
       resultReadyIndicator: "",
       downloadButton: "",
-      errorBanner: ""
+      errorBanner: "",
+      chatInput: 'textarea[placeholder="Message DeepSeek"]',
+      chatInputFallback: 'textarea[name="search"], textarea',
+      attachButton: "div.f02f0e25.ds-icon-button.ds-icon-button--l.ds-icon-button--sizing-container",
+      sendButton: "div._52c986b.ds-icon-button.ds-icon-button--l.ds-icon-button--sizing-container",
+      fileAttachedIndicator: "div.b40079d7._6f68655",
+      fileNameIndicator: "div._7e13492",
+      fileTypeIndicator: "div._5119742.dc832104",
+      sendButtonDisabledIndicator: "",
+      generatingIndicator: "",
+      responseContainer: "",
+      latestAssistantMessage: ""
     },
     timing: {
       afterPageLoadDelayMs: 2000,
       afterUploadDelayMs: 2000,
       afterActionClickDelayMs: 1500,
       elementWaitTimeoutMs: 60000,
-      workflowTimeoutMs: 180000,
-      pollIntervalMs: 500
+      workflowTimeoutMs: 300000,
+      pollIntervalMs: 500,
+      afterFileAttachDelayMs: 3000,
+      afterPromptInsertDelayMs: 500,
+      afterSendClickDelayMs: 1000,
+      fileAttachTimeoutMs: 60000,
+      chatInputReadyTimeoutMs: 60000,
+      sendButtonReadyTimeoutMs: 60000,
+      responseStartTimeoutMs: 60000,
+      responseCompleteTimeoutMs: 300000,
+      textStabilityWindowMs: 2000
+    },
+    behavior: {
+      siteType: "llm_chat",
+      attachFileBeforePrompt: true,
+      insertPromptAfterFileAttached: true,
+      preferDirectFileInput: true,
+      preferSendButtonClick: true,
+      allowEnterToSendFallback: false,
+      requireFileAttachedIndicator: false,
+      enableHeuristicFallbacks: true,
+      expectedFileExtensions: [".xls", ".xlsx"]
     }
   };
 
@@ -62,6 +93,7 @@
     const merged = Object.assign({}, base, input || {});
     merged.selectors = Object.assign({}, base.selectors, input && input.selectors ? input.selectors : {});
     merged.timing = Object.assign({}, base.timing, input && input.timing ? input.timing : {});
+    merged.behavior = Object.assign({}, base.behavior || {}, input && input.behavior ? input.behavior : {});
     merged.siteId = siteConfig.siteId;
     return merged;
   }
@@ -100,6 +132,10 @@
         errors.push("Invalid CSS selector for " + key);
       }
     });
+
+    if (normalized.behavior && !Array.isArray(normalized.behavior.expectedFileExtensions)) {
+      errors.push("behavior.expectedFileExtensions must be an array.");
+    }
 
     return {
       valid: errors.length === 0,

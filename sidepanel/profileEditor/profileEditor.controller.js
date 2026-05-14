@@ -24,6 +24,27 @@
       nextProfile.timing[key] = input ? Number(input.value) : 0;
     });
 
+    Object.keys(nextProfile.behavior || {}).forEach(function syncBehavior(key) {
+      const input = document.querySelector("[data-behavior-input='" + key + "']");
+      if (!input) {
+        return;
+      }
+      if (Array.isArray(nextProfile.behavior[key])) {
+        nextProfile.behavior[key] = input.value
+          .split(",")
+          .map(function trimEntry(entry) {
+            return entry.trim();
+          })
+          .filter(Boolean);
+        return;
+      }
+      if (typeof nextProfile.behavior[key] === "boolean") {
+        nextProfile.behavior[key] = input.value === "true";
+        return;
+      }
+      nextProfile.behavior[key] = input.value.trim();
+    });
+
     return nextProfile;
   }
 

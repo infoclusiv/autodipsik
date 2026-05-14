@@ -23,9 +23,20 @@
       return addEvidence("errorBanner", true, "error", 0.95);
     }
 
+    const chatInput = Selectors.querySelectorSafe(Selectors.getSelector(profile, "chatInput"))
+      || Selectors.querySelectorSafe(Selectors.getSelector(profile, "chatInputFallback"));
+    if (chatInput) {
+      return addEvidence("chatInput", true, "chat_ready", 0.9);
+    }
+
     const resultReady = Selectors.querySelectorSafe(Selectors.getSelector(profile, "resultReadyIndicator"));
     if (resultReady) {
       return addEvidence("resultReadyIndicator", true, "result_ready", 0.9);
+    }
+
+    const generatingIndicator = Selectors.querySelectorSafe(Selectors.getSelector(profile, "generatingIndicator"));
+    if (generatingIndicator) {
+      return addEvidence("generatingIndicator", true, "responding", 0.88);
     }
 
     const progressIndicator = Selectors.querySelectorSafe(Selectors.getSelector(profile, "progressIndicator"));

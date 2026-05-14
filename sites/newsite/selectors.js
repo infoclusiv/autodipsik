@@ -41,12 +41,42 @@
     if (!element) {
       return null;
     }
+    const rect = element.getBoundingClientRect();
     return {
       tagName: element.tagName,
       id: element.id || "",
       className: element.className || "",
-      text: (element.innerText || element.textContent || "").trim().slice(0, 120)
+      text: (element.innerText || element.textContent || "").trim().slice(0, 120),
+      rect: {
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height)
+      },
+      ariaDisabled: element.getAttribute("aria-disabled") || "",
+      disabled: Boolean(element.disabled)
     };
+  }
+
+  function looksGeneratedClassName(token) {
+    return /^_[a-z0-9]{5,}$/i.test(token) || /^[a-f0-9]{6,}$/i.test(token);
+  }
+
+  function getSelectorStabilityWarning(selector) {
+    if (!selector) {
+      return "";
+    }
+
+    const classes = selector.split(".").slice(1).map(function normalizeClassToken(token) {
+      return token.split(/[\s#[:]/)[0];
+    }).filter(Boolean);
+    const generatedClasses = classes.filter(looksGeneratedClassName);
+
+    if (generatedClasses.length || /^div(\.|[\s>])/.test(selector)) {
+      return "This selector may be unstable. Consider using a semantic selector or enabling heuristic fallback.";
+    }
+
+    return "";
   }
 
   async function waitForSelector(options) {
@@ -80,7 +110,11 @@
       visibleCount: 0,
       clickableCount: 0,
       sample: null,
-      errorMessage: ""
+      errorMessage: "",
+      sampleText: "",
+      sampleRect: null,
+      ariaDisabled: "",
+      selectorStabilityWarning: ""
     };
 
     if (!selector) {
@@ -103,6 +137,10 @@
     result.visibleCount = elements.filter(isElementVisible).length;
     result.clickableCount = elements.filter(isElementClickable).length;
     result.sample = getElementSample(elements[0] || null);
+    result.sampleText = result.sample ? result.sample.text : "";
+    result.sampleRect = result.sample ? result.sample.rect : null;
+    result.ariaDisabled = elements[0] ? elements[0].getAttribute("aria-disabled") || "" : "";
+    result.selectorStabilityWarning = getSelectorStabilityWarning(selector);
 
     if (!elements.length) {
       result.status = "missing";
@@ -126,6 +164,8 @@
     isElementVisible: isElementVisible,
     isElementClickable: isElementClickable,
     waitForSelector: waitForSelector,
-    testSelector: testSelector
+    testSelector: testSelector,
+    getElementSample: getElementSample,
+    getSelectorStabilityWarning: getSelectorStabilityWarning
   };
 })(globalThis);

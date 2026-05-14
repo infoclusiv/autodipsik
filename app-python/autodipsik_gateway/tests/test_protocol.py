@@ -20,3 +20,8 @@ def test_missing_id_fails() -> None:
         assert False
     except ValueError:
         assert True
+
+
+def test_file_content_by_path_message_passes() -> None:
+    message = parse_message('{"id":"2","type":"FILE_CONTENT_BY_PATH_REQUEST","payload":{"path":"C:/tmp/sample.xlsx"}}')
+    assert message["type"] == "FILE_CONTENT_BY_PATH_REQUEST"

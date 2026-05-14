@@ -26,10 +26,22 @@
     bindEvents();
   }
 
+  function collectAutomationInput() {
+    const filePathInput = document.getElementById("automation-file-path");
+    const promptInput = document.getElementById("automation-prompt-text");
+    store.filePath = filePathInput ? filePathInput.value.trim() : "";
+    store.promptText = promptInput ? promptInput.value.trim() : "";
+    return {
+      filePath: store.filePath,
+      promptText: store.promptText
+    };
+  }
+
   async function runAutomation(dryRun) {
+    const collected = collectAutomationInput();
     const response = await messaging.sendMessage({
       type: MESSAGE_TYPES.RUN_AUTOMATION,
-      input: { dryRun: dryRun }
+      input: Object.assign({}, collected, { dryRun: dryRun })
     });
     store.workflowResult = response;
     store.lastError = response.error || null;

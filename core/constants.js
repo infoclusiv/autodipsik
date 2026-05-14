@@ -75,6 +75,20 @@
     DEEPSEEK_ATTACH_COMPLETED: "extension.deepseek.attach.completed",
     DEEPSEEK_ATTACH_FAILED: "extension.deepseek.attach.failed",
     DEEPSEEK_FILE_INPUT_FOUND: "extension.deepseek.file_input.found",
-    DEEPSEEK_FILE_INPUT_NOT_FOUND: "extension.deepseek.file_input.not_found"
+    DEEPSEEK_FILE_INPUT_NOT_FOUND: "extension.deepseek.file_input.not_found",
+    DEEPSEEK_WORKFLOW_STARTED: "extension.deepseek.workflow.started",
+    DEEPSEEK_PAGE_READY: "extension.deepseek.page.ready",
+    DEEPSEEK_CHAT_INPUT_FOUND: "extension.deepseek.chat_input.found",
+    DEEPSEEK_FILE_ATTACH_STARTED: "extension.deepseek.file_attach.started",
+    DEEPSEEK_FILE_ATTACHED_CONFIRMED: "extension.deepseek.file_attached.confirmed",
+    DEEPSEEK_FILE_ATTACH_CONFIRMATION_SKIPPED: "extension.deepseek.file_attach_confirmation.skipped",
+    DEEPSEEK_PROMPT_INSERT_STARTED: "extension.deepseek.prompt_insert.started",
+    DEEPSEEK_PROMPT_INSERT_COMPLETED: "extension.deepseek.prompt_insert.completed",
+    DEEPSEEK_SEND_BUTTON_FOUND: "extension.deepseek.send_button.found",
+    DEEPSEEK_SEND_BUTTON_HEURISTIC_USED: "extension.deepseek.send_button.heuristic_used",
+    DEEPSEEK_SEND_CLICKED: "extension.deepseek.send.clicked",
+    DEEPSEEK_WORKFLOW_COMPLETED: "extension.deepseek.workflow.completed",
+    DEEPSEEK_WORKFLOW_FAILED: "extension.deepseek.workflow.failed",
+    DEEPSEEK_DIAGNOSTIC_PACKAGE_CREATED: "extension.deepseek.diagnostic_package.created"
   };
 })(globalThis);

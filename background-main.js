@@ -214,6 +214,28 @@ importScripts(
     };
   }
 
+  async function resolveAutomationFilePayload(input) {
+    if (!input || input.dryRun) {
+      return null;
+    }
+
+    if (!input.filePath) {
+      throw Errors.createError("FILE_PATH_REQUIRED", "A file path is required for automation.", {
+        expected: "A local Excel file path should be provided before running automation.",
+        actual: "The automation input did not include filePath."
+      });
+    }
+
+    await ensureGatewayConnection();
+    const fileResponse = await GatewayClient.request(
+      GatewayProtocol.GATEWAY_MESSAGE_TYPES.FILE_CONTENT_BY_PATH_REQUEST,
+      {
+        path: input.filePath
+      }
+    );
+    return fileResponse.payload || null;
+  }
+
   async function handleMessage(message) {
     const traceId = message.traceId || Telemetry.createTraceId("bg");
     message.traceId = traceId;
@@ -305,8 +327,14 @@ importScripts(
       case MESSAGE_TYPES.SELECTOR_TEST:
       case MESSAGE_TYPES.SELECTOR_TEST_ALL:
       case MESSAGE_TYPES.PAGE_STATE_DETECT:
-      case MESSAGE_TYPES.RUN_AUTOMATION:
         return forwardToActiveTab(message);
+      case MESSAGE_TYPES.RUN_AUTOMATION: {
+        const nextMessage = Object.assign({}, message, {
+          input: Object.assign({}, message.input || {})
+        });
+        nextMessage.input.filePayload = await resolveAutomationFilePayload(nextMessage.input);
+        return forwardToActiveTab(nextMessage);
+      }
       case MESSAGE_TYPES.GATEWAY_STATUS_GET:
         return {
           status: "completed",

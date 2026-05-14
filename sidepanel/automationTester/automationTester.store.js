@@ -6,7 +6,9 @@
       runtimeStatus: null,
       pageState: null,
       workflowResult: null,
-      lastError: null
+      lastError: null,
+      promptText: "",
+      filePath: ""
     }
   };
 })(globalThis);

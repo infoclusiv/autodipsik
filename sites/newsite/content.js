@@ -131,11 +131,23 @@
       status: result.status,
       startedAt: result.timeline && result.timeline[0] ? result.timeline[0].startedAt : new Date().toISOString(),
       finishedAt: new Date().toISOString(),
-      error: result.error || null
+      error: result.error || null,
+      diagnosticPackage: result.diagnosticPackage || null
     });
 
     if (result.error) {
       await DiagnosticStore.recordError(result.error);
+    }
+
+    if (result.diagnosticPackage) {
+      await DiagnosticStore.recordError({
+        code: "DEEPSEEK_DIAGNOSTIC_PACKAGE_CREATED",
+        message: "DeepSeek automation diagnostic package created.",
+        expected: result.diagnosticPackage.expected || "",
+        actual: result.diagnosticPackage.actual || "",
+        workflowStep: result.failedStep || "",
+        pageSummary: result.diagnosticPackage.composerDomSummary || null
+      });
     }
 
     return result;

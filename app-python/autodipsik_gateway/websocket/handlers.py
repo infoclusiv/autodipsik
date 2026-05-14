@@ -122,6 +122,20 @@ class GatewayHandlers:
             )
             return build_envelope("FILE_CONTENT_RESPONSE", payload, correlation_id=correlation_id)
 
+        if message_type == "FILE_CONTENT_BY_PATH_REQUEST":
+            raw_path = message.get("payload", {}).get("path", "")
+            path = Path(raw_path).expanduser()
+            self._validate_or_raise(path)
+            payload = serialize_file_to_base64(path)
+            self.logger.emit(
+                event="python_gateway.file_serialized_by_path",
+                correlation_id=correlation_id,
+                component="python_gateway",
+                state="file_serialized_by_path",
+                details={"name": path.name, "sizeBytes": payload["sizeBytes"]},
+            )
+            return build_envelope("FILE_CONTENT_RESPONSE", payload, correlation_id=correlation_id)
+
         return build_envelope(
             "ERROR",
             build_error_payload("UNKNOWN_ERROR", "Unhandled message type."),

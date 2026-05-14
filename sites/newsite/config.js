@@ -3,9 +3,9 @@
 
   NewSiteAutomation.NEWSITE_CONFIG = {
     siteId: "newsite",
-    displayName: "New Website Automation",
-    baseUrl: "https://example.com",
-    urlPattern: "https://example.com/*",
+    displayName: "DeepSeek Excel Chat Automation",
+    baseUrl: "https://chat.deepseek.com/",
+    urlPattern: "https://chat.deepseek.com/*",
     storageKeySiteProfile: "newsite_site_profile",
     supportedCapabilities: [
       "open_site",
