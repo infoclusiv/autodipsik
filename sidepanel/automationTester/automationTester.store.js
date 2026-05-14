@@ -9,6 +9,7 @@
       runtimeStatus: null,
       pageState: null,
       workflowResult: null,
+      lastRunSummary: null,
       lastError: null,
       promptText: "",
       isConnectingGateway: false,

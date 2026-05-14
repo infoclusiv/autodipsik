@@ -12,13 +12,15 @@
     RUNTIME_STATUS_GET: "NEWSITE_RUNTIME_STATUS_GET",
     DIAGNOSTICS_GET: "NEWSITE_DIAGNOSTICS_GET",
     EXPORT_DIAGNOSTICS: "NEWSITE_EXPORT_DIAGNOSTICS",
+    AUTOMATION_ONE_CLICK_RUN: "AUTODIPSIK_AUTOMATION_ONE_CLICK_RUN",
     GATEWAY_STATUS_GET: "AUTODIPSIK_GATEWAY_STATUS_GET",
     GATEWAY_CONNECT: "AUTODIPSIK_GATEWAY_CONNECT",
     GATEWAY_DISCONNECT: "AUTODIPSIK_GATEWAY_DISCONNECT",
     GATEWAY_SELECT_FILE: "AUTODIPSIK_GATEWAY_SELECT_FILE",
     GATEWAY_EXECUTE_UPLOAD: "AUTODIPSIK_GATEWAY_EXECUTE_UPLOAD",
     GATEWAY_EXPORT_DIAGNOSTICS: "AUTODIPSIK_GATEWAY_EXPORT_DIAGNOSTICS",
-    DEEPSEEK_ATTACH_FILE: "AUTODIPSIK_ATTACH_FILE_TO_DEEPSEEK"
+    DEEPSEEK_ATTACH_FILE: "AUTODIPSIK_ATTACH_FILE_TO_DEEPSEEK",
+    DEEPSEEK_TAB_ENSURE: "AUTODIPSIK_DEEPSEEK_TAB_ENSURE"
   };
 
   NewSiteCore.STORAGE_KEYS = {
@@ -30,6 +32,7 @@
     ERROR_LOG: "error_log",
     RUNTIME_STATUS: "runtime_status",
     DIAGNOSTIC_SNAPSHOT: "diagnostic_snapshot",
+    DIAGNOSTIC_RUN_HISTORY: "diagnostic_run_history",
     GATEWAY_STATUS: "gateway_status",
     GATEWAY_EVENTS: "gateway_events",
     GATEWAY_SELECTED_FILE: "gateway_selected_file",
@@ -61,6 +64,8 @@
     WORKFLOW_FAILED: "site.workflow.failed",
     DIAGNOSTIC_EXPORT_STARTED: "diagnostic.export.started",
     DIAGNOSTIC_EXPORT_COMPLETED: "diagnostic.export.completed",
+    DIAGNOSTIC_PACKAGE_CREATED: "diagnostic.package.created",
+    DIAGNOSTIC_PACKAGE_EXPORTED: "diagnostic.package.exported",
     GATEWAY_CONNECTING: "extension.gateway.connecting",
     GATEWAY_CONNECTED: "extension.gateway.connected",
     GATEWAY_DISCONNECTED: "extension.gateway.disconnected",
@@ -84,11 +89,27 @@
     DEEPSEEK_FILE_ATTACH_CONFIRMATION_SKIPPED: "extension.deepseek.file_attach_confirmation.skipped",
     DEEPSEEK_PROMPT_INSERT_STARTED: "extension.deepseek.prompt_insert.started",
     DEEPSEEK_PROMPT_INSERT_COMPLETED: "extension.deepseek.prompt_insert.completed",
+    DEEPSEEK_SEND_BUTTON_SEARCH_STARTED: "extension.deepseek.send_button.search.started",
     DEEPSEEK_SEND_BUTTON_FOUND: "extension.deepseek.send_button.found",
+    DEEPSEEK_SEND_BUTTON_NOT_FOUND: "extension.deepseek.send_button.not_found",
     DEEPSEEK_SEND_BUTTON_HEURISTIC_USED: "extension.deepseek.send_button.heuristic_used",
     DEEPSEEK_SEND_CLICKED: "extension.deepseek.send.clicked",
+    DEEPSEEK_SEND_FAILED: "extension.deepseek.send.failed",
     DEEPSEEK_WORKFLOW_COMPLETED: "extension.deepseek.workflow.completed",
     DEEPSEEK_WORKFLOW_FAILED: "extension.deepseek.workflow.failed",
-    DEEPSEEK_DIAGNOSTIC_PACKAGE_CREATED: "extension.deepseek.diagnostic_package.created"
+    DEEPSEEK_DIAGNOSTIC_PACKAGE_CREATED: "extension.deepseek.diagnostic_package.created",
+    AUTOMATION_ONE_CLICK_STARTED: "automation.one_click.started",
+    AUTOMATION_ONE_CLICK_PRECONDITION_STARTED: "automation.one_click.precondition.started",
+    AUTOMATION_ONE_CLICK_PRECONDITION_COMPLETED: "automation.one_click.precondition.completed",
+    AUTOMATION_ONE_CLICK_PRECONDITION_FAILED: "automation.one_click.precondition.failed",
+    AUTOMATION_ONE_CLICK_COMPLETED: "automation.one_click.completed",
+    AUTOMATION_ONE_CLICK_FAILED: "automation.one_click.failed",
+    DEEPSEEK_TAB_ENSURE_STARTED: "deepseek.tab.ensure.started",
+    DEEPSEEK_TAB_ENSURE_COMPLETED: "deepseek.tab.ensure.completed",
+    DEEPSEEK_TAB_ENSURE_FAILED: "deepseek.tab.ensure.failed",
+    DEEPSEEK_PREFLIGHT_STARTED: "deepseek.preflight.started",
+    DEEPSEEK_PREFLIGHT_COMPLETED: "deepseek.preflight.completed",
+    DEEPSEEK_PREFLIGHT_FAILED: "deepseek.preflight.failed",
+    DEEPSEEK_FILE_PAYLOAD_RESOLVED: "deepseek.file_payload.resolved"
   };
 })(globalThis);

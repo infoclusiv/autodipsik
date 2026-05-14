@@ -5,12 +5,12 @@
   const messaging = NewSiteSidepanel.ChromeMessaging;
   const Toast = NewSiteSidepanel.Toast;
   const MESSAGE_TYPES = globalScope.NewSiteCore.MESSAGE_TYPES;
-  const SiteProfile = globalScope.NewSiteAutomation.SiteProfile;
+  const DeepSeekSiteProfile = globalScope.DeepSeekAutomation.DeepSeekSiteProfile;
 
   let rootNode;
 
   function collectProfileFromDom() {
-    const nextProfile = SiteProfile.normalizeSiteProfile(store.profile);
+    const nextProfile = DeepSeekSiteProfile.normalizeSiteProfile(store.profile);
     nextProfile.baseUrl = document.getElementById("profile-base-url").value.trim();
     nextProfile.urlPattern = document.getElementById("profile-url-pattern").value.trim();
 
@@ -49,7 +49,10 @@
   }
 
   async function loadProfile() {
-    const response = await messaging.sendMessage({ type: MESSAGE_TYPES.PROFILE_GET });
+    const response = await messaging.sendMessage({
+      type: MESSAGE_TYPES.PROFILE_GET,
+      targetSiteId: store.targetSiteId
+    });
     store.profile = response.profile;
     store.validationErrors = [];
     render(rootNode);
@@ -58,7 +61,7 @@
 
   async function saveProfile() {
     const profile = collectProfileFromDom();
-    const validation = SiteProfile.validateSiteProfile(profile);
+    const validation = DeepSeekSiteProfile.validateSiteProfile(profile);
     store.validationErrors = validation.errors;
     store.profile = validation.profile;
     render(rootNode);
@@ -71,6 +74,7 @@
 
     const response = await messaging.sendMessage({
       type: MESSAGE_TYPES.PROFILE_SAVE,
+      targetSiteId: store.targetSiteId,
       profile: validation.profile
     });
     if (response.status === "completed") {
@@ -79,7 +83,10 @@
   }
 
   async function resetProfile() {
-    const response = await messaging.sendMessage({ type: MESSAGE_TYPES.PROFILE_RESET });
+    const response = await messaging.sendMessage({
+      type: MESSAGE_TYPES.PROFILE_RESET,
+      targetSiteId: store.targetSiteId
+    });
     store.profile = response.profile;
     store.validationErrors = [];
     store.selectorResults = {};
@@ -94,7 +101,8 @@
       type: MESSAGE_TYPES.SELECTOR_TEST,
       selectorName: selectorName,
       selector: profile.selectors[selectorName],
-      profile: profile
+      profile: profile,
+      targetSiteId: store.targetSiteId
     });
     store.profile = profile;
     store.selectorResults[selectorName] = response.result;
@@ -106,7 +114,8 @@
     const profile = collectProfileFromDom();
     const response = await messaging.sendMessage({
       type: MESSAGE_TYPES.SELECTOR_TEST_ALL,
-      profile: profile
+      profile: profile,
+      targetSiteId: store.targetSiteId
     });
     store.profile = profile;
     response.selectorHealth.forEach(function storeResult(entry) {

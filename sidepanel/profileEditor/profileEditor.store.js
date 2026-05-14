@@ -4,7 +4,8 @@
   const state = {
     profile: null,
     validationErrors: [],
-    selectorResults: {}
+    selectorResults: {},
+    targetSiteId: "deepseek"
   };
 
   const selectorGroups = [

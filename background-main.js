@@ -4,11 +4,14 @@ importScripts(
   "core/errors.js",
   "core/storage.js",
   "core/telemetry.js",
+  "core/observabilityContracts.js",
   "core/gatewayProtocol.js",
   "core/gatewayClient.js",
   "core/messaging.js",
   "core/tabManager.js",
   "core/workflowRunner.js",
+  "core/diagnosticRedactor.js",
+  "core/diagnosticExporter.js",
   "core/diagnosticStore.js",
   "sites/newsite/config.js",
   "sites/newsite/contracts.js",
@@ -34,6 +37,30 @@ importScripts(
   const DeepSeekAutomation = globalScope.DeepSeekAutomation;
   const deepSeekConfig = DeepSeekAutomation.DEEPSEEK_CONFIG;
   const DeepSeekSiteProfile = DeepSeekAutomation.DeepSeekSiteProfile;
+  const AUTOMATION_STAGE_MODULES = {
+    ensure_gateway_connected: "background-main.js",
+    ensure_file_selected: "background-main.js",
+    ensure_deepseek_tab: "background-main.js",
+    detect_page_state: "sites/deepseek/content.js",
+    run_preflight: "sites/deepseek/chatAutomator.js",
+    run_actual_automation: "sites/deepseek/chatAutomator.js"
+  };
+
+  function resolveSiteProfileService(targetSiteId) {
+    if (targetSiteId === "deepseek") {
+      return {
+        config: deepSeekConfig,
+        profileService: DeepSeekSiteProfile,
+        storageKey: NewSiteCore.STORAGE_KEYS.DEEPSEEK_SITE_PROFILE
+      };
+    }
+
+    return {
+      config: siteConfig,
+      profileService: SiteProfile,
+      storageKey: NewSiteCore.STORAGE_KEYS.SITE_PROFILE
+    };
+  }
 
   async function updateRuntimeStatus(extra) {
     const activeTab = await TabManager.getActiveTab();
@@ -86,22 +113,7 @@ importScripts(
   }
 
   async function forwardToDeepSeekTab(message) {
-    const activeTab = await TabManager.getActiveTab();
-    if (!activeTab || !activeTab.id) {
-      throw Errors.createError("ACTIVE_TAB_NOT_FOUND", "No active tab available.", {
-        expected: "An active DeepSeek tab should be open in the current window.",
-        actual: "No active tab was found.",
-        suggestedFix: "Open DeepSeek and keep its tab active before retrying."
-      });
-    }
-
-    if (!deepSeekConfig.isDeepSeekUrl(activeTab.url || "")) {
-      throw Errors.createError("ACTIVE_TAB_NOT_DEEPSEEK", "The active tab is not DeepSeek.", {
-        expected: "The active tab URL should match https://chat.deepseek.com/*.",
-        actual: activeTab.url || "Unknown URL",
-        suggestedFix: "Switch to a DeepSeek tab and retry the upload."
-      });
-    }
+    const activeTab = await ensureDeepSeekTab(message.traceId);
 
     await Telemetry.emit({
       eventName: TELEMETRY_EVENTS.DEEPSEEK_TAB_DETECTED,
@@ -114,8 +126,15 @@ importScripts(
     });
 
     try {
-      return await chrome.tabs.sendMessage(activeTab.id, message);
+      return await TabManager.sendMessageWithContentScriptCheck(activeTab.id, message);
     } catch (error) {
+      await DiagnosticStore.recordContentScriptHealth({
+        traceId: message.traceId,
+        available: false,
+        activeTabUrl: activeTab.url || "",
+        checkedAt: new Date().toISOString(),
+        reason: error.message
+      });
       throw Errors.createError("CONTENT_SCRIPT_UNAVAILABLE", "DeepSeek content script is unavailable.", {
         expected: "The DeepSeek content script should be active on the current tab.",
         actual: error.message,
@@ -160,12 +179,18 @@ importScripts(
         dialogTitle: "Select Excel file to attach"
       }
     );
-    return {
+    const result = {
       status: "completed",
       traceId: traceId,
       gatewayStatus: await GatewayClient.getStatus(),
       file: response.payload || null
     };
+    await DiagnosticStore.recordGatewaySnapshot({
+      traceId: traceId,
+      stage: "ensure_file_selected",
+      gatewayStatus: result.gatewayStatus
+    });
+    return result;
   }
 
   async function handleGatewayExecuteUpload(traceId) {
@@ -292,7 +317,326 @@ importScripts(
       }
     );
 
+    await Telemetry.emit({
+      eventName: TELEMETRY_EVENTS.DEEPSEEK_FILE_PAYLOAD_RESOLVED,
+      traceId: input.traceId || Telemetry.createTraceId("payload"),
+      siteId: "deepseek",
+      component: "background",
+      level: "info",
+      message: "DeepSeek file payload resolved",
+      data: {
+        fileId: selectedFile.fileId,
+        fileName: selectedFile.name || "",
+        extension: selectedFile.extension || ""
+      }
+    });
+
     return fileResponse.payload || null;
+  }
+
+  async function ensureDeepSeekTab(traceId) {
+    await Telemetry.emit({
+      eventName: TELEMETRY_EVENTS.DEEPSEEK_TAB_ENSURE_STARTED,
+      traceId: traceId,
+      siteId: "deepseek",
+      component: "background",
+      level: "info",
+      message: "Ensuring DeepSeek tab"
+    });
+
+    try {
+      const tab = await TabManager.ensureTab(deepSeekConfig.baseUrl, deepSeekConfig.urlPattern);
+      await TabManager.waitForTabComplete(tab.id, 20000);
+      await DiagnosticStore.recordRuntimeSnapshot({
+        traceId: traceId,
+        stage: "ensure_deepseek_tab",
+        url: tab.url || deepSeekConfig.baseUrl,
+        tabId: tab.id,
+        title: tab.title || ""
+      });
+      await DiagnosticStore.recordContentScriptHealth({
+        traceId: traceId,
+        available: true,
+        activeTabUrl: tab.url || deepSeekConfig.baseUrl,
+        checkedAt: new Date().toISOString()
+      });
+      await Telemetry.emit({
+        eventName: TELEMETRY_EVENTS.DEEPSEEK_TAB_ENSURE_COMPLETED,
+        traceId: traceId,
+        siteId: "deepseek",
+        component: "background",
+        level: "info",
+        message: "DeepSeek tab is ready",
+        data: { tabId: tab.id, url: tab.url || deepSeekConfig.baseUrl }
+      });
+      return tab;
+    } catch (error) {
+      const structured = Errors.toStructuredError(error);
+      structured.failedStage = "ensure_deepseek_tab";
+      await Telemetry.emit({
+        eventName: TELEMETRY_EVENTS.DEEPSEEK_TAB_ENSURE_FAILED,
+        traceId: traceId,
+        siteId: "deepseek",
+        component: "background",
+        level: "error",
+        message: structured.message,
+        actual: structured.actual,
+        data: structured
+      });
+      throw Errors.createError("DEEPSEEK_TAB_NOT_READY", "The DeepSeek tab could not be prepared.", {
+        traceId: traceId,
+        failedStage: "ensure_deepseek_tab",
+        expected: "A DeepSeek tab should be opened and fully loaded.",
+        actual: structured.actual || structured.message,
+        nextChecks: [
+          "Confirm https://chat.deepseek.com/ is reachable in the browser.",
+          "Reload the extension if the content script does not attach."
+        ]
+      });
+    }
+  }
+
+  async function runAutomationStage(traceId, stageName, fn) {
+    await Telemetry.emit({
+      eventName: TELEMETRY_EVENTS.AUTOMATION_ONE_CLICK_PRECONDITION_STARTED,
+      traceId: traceId,
+      siteId: "deepseek",
+      component: "background",
+      level: "info",
+      message: "Automation one-click stage started",
+      stage: stageName
+    });
+
+    try {
+      const result = await fn();
+      await Telemetry.emit({
+        eventName: TELEMETRY_EVENTS.AUTOMATION_ONE_CLICK_PRECONDITION_COMPLETED,
+        traceId: traceId,
+        siteId: "deepseek",
+        component: "background",
+        level: "info",
+        message: "Automation one-click stage completed",
+        stage: stageName
+      });
+      return result;
+    } catch (error) {
+      const structured = Errors.toStructuredError(error);
+      structured.traceId = structured.traceId || traceId;
+      structured.failedStage = structured.failedStage || stageName;
+      structured.probableCause = structured.probableCause || AUTOMATION_STAGE_MODULES[stageName] || "background-main.js";
+      await Telemetry.emit({
+        eventName: TELEMETRY_EVENTS.AUTOMATION_ONE_CLICK_PRECONDITION_FAILED,
+        traceId: traceId,
+        siteId: "deepseek",
+        component: "background",
+        level: "error",
+        message: structured.message,
+        stage: stageName,
+        expected: structured.expected,
+        actual: structured.actual,
+        data: structured
+      });
+      throw structured;
+    }
+  }
+
+  async function handleAutomationOneClick(message) {
+    const traceId = message.traceId;
+    const input = Object.assign({
+      promptText: "",
+      autoConnectGateway: true,
+      autoOpenDeepSeek: true,
+      autoSelectFileIfMissing: true,
+      runPreflight: true,
+      runActualAutomation: true
+    }, message.input || {});
+
+    if (!input.promptText) {
+      throw Errors.createError("PROMPT_REQUIRED", "Prompt text is required.", {
+        traceId: traceId,
+        failedStage: "validate_input",
+        expected: "A non-empty prompt should be provided before running automation.",
+        actual: "The one-click request did not include prompt text."
+      });
+    }
+
+    await Telemetry.emit({
+      eventName: TELEMETRY_EVENTS.AUTOMATION_ONE_CLICK_STARTED,
+      traceId: traceId,
+      siteId: "deepseek",
+      component: "background",
+      level: "info",
+      message: "Automation one-click run started"
+    });
+
+    let gatewayStatus = await GatewayClient.getStatus();
+    let selectedFile = gatewayStatus.selectedFile || null;
+    let pageState = null;
+    let workflowId = "";
+    let automationResult = null;
+
+    try {
+      gatewayStatus = await runAutomationStage(traceId, "ensure_gateway_connected", async function ensureGatewayConnected() {
+        const status = input.autoConnectGateway ? await ensureGatewayConnection() : await GatewayClient.getStatus();
+        await DiagnosticStore.recordGatewaySnapshot({
+          traceId: traceId,
+          stage: "ensure_gateway_connected",
+          gatewayStatus: status
+        });
+        return status;
+      });
+
+      selectedFile = await runAutomationStage(traceId, "ensure_file_selected", async function ensureFileSelected() {
+        let currentStatus = await GatewayClient.getStatus();
+        if (!currentStatus.selectedFile && input.autoSelectFileIfMissing) {
+          const selection = await handleGatewaySelectFile(traceId);
+          currentStatus = selection.gatewayStatus || currentStatus;
+        }
+        if (!currentStatus.selectedFile || !currentStatus.selectedFile.fileId) {
+          throw Errors.createError("FILE_SELECTION_CANCELLED", "No file was selected for the workflow.", {
+            traceId: traceId,
+            failedStage: "ensure_file_selected",
+            expected: "A gateway-selected Excel file should be available.",
+            actual: "The file picker completed without a selected file.",
+            nextChecks: [
+              "Run automation again and select an Excel file when prompted."
+            ]
+          });
+        }
+        gatewayStatus = currentStatus;
+        return currentStatus.selectedFile;
+      });
+
+      if (input.autoOpenDeepSeek) {
+        await runAutomationStage(traceId, "ensure_deepseek_tab", function ensureDeepSeekTabStage() {
+          return ensureDeepSeekTab(traceId);
+        });
+      }
+
+      pageState = await runAutomationStage(traceId, "detect_page_state", async function detectPageStateStage() {
+        return await forwardToDeepSeekTab({
+          type: MESSAGE_TYPES.PAGE_STATE_DETECT,
+          traceId: traceId,
+          targetSiteId: "deepseek"
+        });
+      });
+
+      if (input.runPreflight) {
+        await Telemetry.emit({
+          eventName: TELEMETRY_EVENTS.DEEPSEEK_PREFLIGHT_STARTED,
+          traceId: traceId,
+          siteId: "deepseek",
+          component: "background",
+          level: "info",
+          message: "DeepSeek preflight started"
+        });
+        const preflightResult = await runAutomationStage(traceId, "run_preflight", async function preflightStage() {
+          return await forwardToDeepSeekTab({
+            type: MESSAGE_TYPES.RUN_AUTOMATION,
+            traceId: traceId,
+            targetSiteId: "deepseek",
+            input: {
+              dryRun: true,
+              promptText: input.promptText,
+              useGatewaySelectedFile: true,
+              selectedFile: selectedFile
+            }
+          });
+        });
+        workflowId = preflightResult.workflowId || workflowId;
+        await Telemetry.emit({
+          eventName: TELEMETRY_EVENTS.DEEPSEEK_PREFLIGHT_COMPLETED,
+          traceId: traceId,
+          siteId: "deepseek",
+          component: "background",
+          level: "info",
+          message: "DeepSeek preflight completed",
+          data: { workflowId: preflightResult.workflowId || "" }
+        });
+      }
+
+      if (input.runActualAutomation) {
+        automationResult = await runAutomationStage(traceId, "run_actual_automation", async function actualStage() {
+          const nextMessage = {
+            type: MESSAGE_TYPES.RUN_AUTOMATION,
+            traceId: traceId,
+            targetSiteId: "deepseek",
+            input: {
+              dryRun: false,
+              promptText: input.promptText,
+              useGatewaySelectedFile: true,
+              selectedFile: selectedFile,
+              fileId: selectedFile.fileId,
+              fileName: selectedFile.name,
+              fileExtension: selectedFile.extension
+            }
+          };
+          nextMessage.input.filePayload = await resolveAutomationFilePayload({
+            traceId: traceId,
+            fileId: selectedFile.fileId,
+            fileName: selectedFile.name,
+            fileExtension: selectedFile.extension,
+            dryRun: false
+          });
+          return forwardToDeepSeekTab(nextMessage);
+        });
+        workflowId = automationResult.workflowId || workflowId;
+      }
+
+      await Telemetry.emit({
+        eventName: TELEMETRY_EVENTS.AUTOMATION_ONE_CLICK_COMPLETED,
+        traceId: traceId,
+        siteId: "deepseek",
+        component: "background",
+        level: "info",
+        message: "Automation one-click run completed"
+      });
+
+      return {
+        status: "completed",
+        traceId: traceId,
+        workflowId: workflowId,
+        stage: "completed",
+        failedStage: "",
+        failedStep: automationResult && automationResult.failedStep ? automationResult.failedStep : "",
+        gatewayStatus: await GatewayClient.getStatus(),
+        selectedFile: selectedFile,
+        pageState: pageState,
+        automationResult: automationResult,
+        diagnosticPackageReady: Boolean(automationResult && automationResult.diagnosticPackage),
+        error: null
+      };
+    } catch (error) {
+      const structured = Errors.toStructuredError(error);
+      structured.traceId = structured.traceId || traceId;
+      await DiagnosticStore.recordError(structured);
+      await Telemetry.emit({
+        eventName: TELEMETRY_EVENTS.AUTOMATION_ONE_CLICK_FAILED,
+        traceId: traceId,
+        siteId: "deepseek",
+        component: "background",
+        level: "error",
+        message: structured.message,
+        stage: structured.failedStage || "",
+        expected: structured.expected,
+        actual: structured.actual,
+        data: structured
+      });
+      return {
+        status: "failed",
+        traceId: traceId,
+        workflowId: workflowId,
+        stage: structured.failedStage || "failed",
+        failedStage: structured.failedStage || "",
+        failedStep: structured.workflowStep || "",
+        gatewayStatus: await GatewayClient.getStatus(),
+        selectedFile: selectedFile,
+        pageState: pageState,
+        automationResult: automationResult,
+        diagnosticPackageReady: true,
+        error: structured
+      };
+    }
   }
 
   async function handleMessage(message) {
@@ -311,13 +655,17 @@ importScripts(
 
     switch (message.type) {
       case MESSAGE_TYPES.PROFILE_GET:
+        {
+          const profileService = resolveSiteProfileService(message.targetSiteId).profileService;
         return {
           status: "completed",
           traceId: traceId,
-          profile: await SiteProfile.loadSiteProfile()
+          profile: await profileService.loadSiteProfile()
         };
+        }
       case MESSAGE_TYPES.PROFILE_SAVE: {
-        const saveResult = await SiteProfile.saveSiteProfile(message.profile);
+        const profileService = resolveSiteProfileService(message.targetSiteId).profileService;
+        const saveResult = await profileService.saveSiteProfile(message.profile);
         return {
           status: saveResult.valid ? "completed" : "failed",
           traceId: traceId,
@@ -325,8 +673,9 @@ importScripts(
         };
       }
       case MESSAGE_TYPES.PROFILE_RESET: {
-        const profile = SiteProfile.cloneDefaultProfile();
-        await Storage.setValue(siteConfig.storageKeySiteProfile, profile);
+        const profileInfo = resolveSiteProfileService(message.targetSiteId);
+        const profile = profileInfo.profileService.cloneDefaultProfile();
+        await Storage.setValue(profileInfo.storageKey, profile);
         return {
           status: "completed",
           traceId: traceId,
@@ -340,11 +689,12 @@ importScripts(
           runtimeStatus: await updateRuntimeStatus()
         };
       case MESSAGE_TYPES.DIAGNOSTICS_GET: {
-        const profile = await SiteProfile.loadSiteProfile();
+        const profileInfo = resolveSiteProfileService(message.targetSiteId || "deepseek");
+        const profile = await profileInfo.profileService.loadSiteProfile();
         const contentContext = await forwardToActiveTab(message).catch(function swallowContentError() {
           return { status: "failed", pageSummary: null };
         });
-        const diagnostics = await DiagnosticStore.exportDiagnostics(profile, siteConfig);
+        const diagnostics = await DiagnosticStore.exportDiagnostics(profile, profileInfo.config);
         diagnostics.liveContext = contentContext;
         return {
           status: "completed",
@@ -362,9 +712,9 @@ importScripts(
           message: "Diagnostic export started"
         });
 
-        const profile = await SiteProfile.loadSiteProfile();
-        const diagnostics = await DiagnosticStore.exportDiagnostics(profile, siteConfig, {
-          deepseekProfile: DeepSeekSiteProfile.cloneDefaultProfile(),
+        const profileInfo = resolveSiteProfileService(message.targetSiteId || "deepseek");
+        const profile = await profileInfo.profileService.loadSiteProfile();
+        const diagnostics = await DiagnosticStore.exportDiagnostics(profile, profileInfo.config, {
           gatewayStatus: await GatewayClient.getStatus()
         });
 
@@ -375,6 +725,14 @@ importScripts(
           component: "background",
           level: "info",
           message: "Diagnostic export completed"
+        });
+        await Telemetry.emit({
+          eventName: TELEMETRY_EVENTS.DIAGNOSTIC_PACKAGE_EXPORTED,
+          traceId: traceId,
+          siteId: profileInfo.config.siteId,
+          component: "background",
+          level: "info",
+          message: "AI-ready diagnostic package exported"
         });
 
         return {
@@ -387,6 +745,12 @@ importScripts(
       case MESSAGE_TYPES.SELECTOR_TEST_ALL:
       case MESSAGE_TYPES.PAGE_STATE_DETECT:
         return forwardToSiteAwareTab(message);
+      case MESSAGE_TYPES.DEEPSEEK_TAB_ENSURE:
+        return {
+          status: "completed",
+          traceId: traceId,
+          tab: await ensureDeepSeekTab(traceId)
+        };
       case MESSAGE_TYPES.RUN_AUTOMATION: {
         const nextMessage = Object.assign({}, message, {
           input: Object.assign({}, message.input || {})
@@ -399,6 +763,8 @@ importScripts(
         }
         return result;
       }
+      case MESSAGE_TYPES.AUTOMATION_ONE_CLICK_RUN:
+        return handleAutomationOneClick(message);
       case MESSAGE_TYPES.GATEWAY_STATUS_GET:
         return {
           status: "completed",
@@ -425,10 +791,9 @@ importScripts(
         return handleGatewayExecuteUpload(traceId);
       case MESSAGE_TYPES.GATEWAY_EXPORT_DIAGNOSTICS: {
         const diagnostics = await DiagnosticStore.exportDiagnostics(
-          await SiteProfile.loadSiteProfile(),
-          siteConfig,
+          await DeepSeekSiteProfile.loadSiteProfile(),
+          deepSeekConfig,
           {
-            deepseekProfile: DeepSeekSiteProfile.cloneDefaultProfile(),
             gatewayStatus: await GatewayClient.getStatus()
           }
         );

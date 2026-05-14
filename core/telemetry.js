@@ -27,8 +27,15 @@
       component: event.component || "unknown",
       workflowId: event.workflowId || "",
       stepName: event.stepName || "",
+      stage: event.stage || "",
       level: event.level || "info",
       message: event.message || "",
+      expected: event.expected || "",
+      actual: event.actual || "",
+      durationMs: typeof event.durationMs === "number" ? event.durationMs : 0,
+      attempt: typeof event.attempt === "number" ? event.attempt : 0,
+      selectorName: event.selectorName || "",
+      selectorValue: event.selectorValue || "",
       data: event.data || {}
     };
   }

@@ -3,9 +3,7 @@
 
   NewSiteSidepanel.DiagnosticsStore = {
     state: {
-      diagnostics: null,
-      levelFilter: "",
-      traceFilter: ""
+      diagnostics: null
     }
   };
 })(globalThis);

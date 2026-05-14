@@ -80,6 +80,13 @@
       setTimeout(resolve, profile.upload.waitAfterAttachMs || 1500);
     });
 
+    await DiagnosticStore.recordRuntimeSnapshot({
+      traceId: traceId,
+      stage: "deepseek_attach_file",
+      url: location.href,
+      uploadSnapshot: profile.diagnostics.captureDomUploadState ? DomHelpers.getUploadSnapshot() : null
+    });
+
     return {
       status: "completed",
       traceId: traceId,
@@ -168,6 +175,12 @@
       };
 
       await DiagnosticStore.recordPageState(payload);
+      await DiagnosticStore.recordContentScriptHealth({
+        traceId: traceId,
+        available: true,
+        activeTabUrl: location.href,
+        checkedAt: new Date().toISOString()
+      });
       await Telemetry.emit({
         eventName: TELEMETRY_EVENTS.PAGE_STATE_DETECT_COMPLETED,
         traceId: traceId,
@@ -200,6 +213,12 @@
   async function handleRunAutomation(message) {
     const traceId = message.traceId || Telemetry.createTraceId("workflow");
     const profile = await getProfile(message);
+    await DiagnosticStore.recordContentScriptHealth({
+      traceId: traceId,
+      available: true,
+      activeTabUrl: location.href,
+      checkedAt: new Date().toISOString()
+    });
     const result = await Automator.runMainAutomation({
       profile: profile,
       input: message.input || {},
@@ -210,9 +229,11 @@
       workflowId: result.workflowId,
       traceId: result.traceId,
       failedStep: result.failedStep || "",
+      failedStage: result.failedStage || "",
       status: result.status,
       startedAt: result.timeline && result.timeline[0] ? result.timeline[0].startedAt : new Date().toISOString(),
       finishedAt: new Date().toISOString(),
+      timeline: result.timeline || [],
       error: result.error || null,
       diagnosticPackage: result.diagnosticPackage || null
     });
@@ -222,11 +243,23 @@
     }
 
     if (result.diagnosticPackage) {
+      await Telemetry.emit({
+        eventName: TELEMETRY_EVENTS.DIAGNOSTIC_PACKAGE_CREATED,
+        traceId: traceId,
+        workflowId: result.workflowId,
+        siteId: "deepseek",
+        component: "content",
+        level: "warn",
+        message: "AI-ready diagnostic package created"
+      });
       await DiagnosticStore.recordError({
         code: "DEEPSEEK_DIAGNOSTIC_PACKAGE_CREATED",
         message: "DeepSeek automation diagnostic package created.",
         expected: result.diagnosticPackage.expected || "",
         actual: result.diagnosticPackage.actual || "",
+        traceId: traceId,
+        workflowId: result.workflowId,
+        failedStage: result.failedStage || "",
         workflowStep: result.failedStep || "",
         pageSummary: result.diagnosticPackage.composerDomSummary || null
       });

@@ -4,6 +4,7 @@
   const render = NewSiteSidepanel.AutomationTesterRender.render;
   const messaging = NewSiteSidepanel.ChromeMessaging;
   const Toast = NewSiteSidepanel.Toast;
+  const orchestrator = NewSiteSidepanel.AutomationRunOrchestrator;
   const MESSAGE_TYPES = globalScope.NewSiteCore.MESSAGE_TYPES;
   const deepSeekConfig = globalScope.DeepSeekAutomation.DEEPSEEK_CONFIG;
 
@@ -100,6 +101,19 @@
     rerender();
   }
 
+  async function exportDiagnostics() {
+    const response = await messaging.sendMessage({ type: MESSAGE_TYPES.EXPORT_DIAGNOSTICS, targetSiteId: "deepseek" });
+    const payload = JSON.stringify(response.diagnostics, null, 2);
+    const blob = new Blob([payload], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    await chrome.downloads.download({
+      url: url,
+      filename: "autodipsik-ai-diagnostics-" + Date.now() + ".json",
+      saveAs: true
+    });
+    Toast.showToast("Diagnostic export started.");
+  }
+
   function collectAutomationInput() {
     const promptInput = document.getElementById("automation-prompt-text");
     store.promptText = promptInput ? promptInput.value.trim() : "";
@@ -138,6 +152,7 @@
     });
     store.isRunningAutomation = false;
     store.workflowResult = response;
+    store.lastRunSummary = response;
     store.lastError = response.error || null;
     if (response.gatewayStatus) {
       store.gatewayStatus = response.gatewayStatus;
@@ -147,10 +162,35 @@
     Toast.showToast(dryRun ? "Dry run executed." : "Automation executed.");
   }
 
+  async function runAutomationOneClick() {
+    const collected = collectAutomationInput();
+    if (!collected.promptText) {
+      Toast.showToast("Prompt text is required.");
+      return;
+    }
+
+    store.isRunningAutomation = true;
+    const response = await orchestrator.runOneClick({
+      promptText: collected.promptText
+    });
+    store.isRunningAutomation = false;
+    store.workflowResult = response.automationResult || response;
+    store.lastRunSummary = response;
+    store.lastError = response.error || null;
+    store.pageState = response.pageState || store.pageState;
+    if (response.gatewayStatus) {
+      store.gatewayStatus = response.gatewayStatus;
+      store.selectedFile = response.gatewayStatus.selectedFile || store.selectedFile;
+    }
+    rerender();
+    Toast.showToast(response.status === "completed" ? "Automation executed." : (response.error && response.error.message ? response.error.message : "Automation failed."));
+  }
+
   function bindEvents() {
     document.getElementById("automation-connect-gateway").onclick = connectGateway;
     document.getElementById("automation-disconnect-gateway").onclick = disconnectGateway;
     document.getElementById("automation-select-file").onclick = selectExcelFile;
+    document.getElementById("automation-export-diagnostics").onclick = exportDiagnostics;
     document.getElementById("open-target-site").onclick = function onOpen() {
       chrome.tabs.create({ url: deepSeekConfig.baseUrl });
     };
@@ -159,7 +199,7 @@
       runAutomation(true);
     };
     document.getElementById("run-automation").onclick = function onRun() {
-      runAutomation(false);
+      runAutomationOneClick();
     };
   }
 

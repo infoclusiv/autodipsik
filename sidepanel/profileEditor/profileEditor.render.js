@@ -51,9 +51,14 @@
   }
 
   function renderSelectorRow(profile, key) {
+    const helpText = key === "sendButton"
+      ? "<div class='field-help'>Required for the final workflow step that clicks send after file attachment and prompt insertion.</div>"
+      : key === "sendButtonDisabledIndicator"
+        ? "<div class='field-help'>Optional selector to detect disabled send states before clicking.</div>"
+        : "<div class='field-help'>CSS selector</div>";
     return [
       "<div class='selector-row'>",
-      "<div><label>" + key + "</label><div class='field-help'>CSS selector</div></div>",
+      "<div><label>" + key + "</label>" + helpText + "</div>",
       "<div><input data-selector-input='" + key + "' value=\"" + String(profile.selectors[key]).replace(/"/g, "&quot;") + "\"></div>",
       "<div><button data-test-selector='" + key + "'>Test selector</button></div>",
       "<div>" + resultMarkup(store.selectorResults[key]) + "</div>",
@@ -88,6 +93,7 @@
     root.innerHTML = [
       "<div class='card'>",
       "<h2>Site Profile Editor</h2>",
+      "<p class='field-help'>This editor is connected to the live DeepSeek profile used by Automation Tester.</p>",
       "<div class='form-grid'>",
       "<div><label>Base URL</label><input id='profile-base-url' value=\"" + profile.baseUrl.replace(/"/g, "&quot;") + "\"></div>",
       "<div><label>URL Pattern</label><input id='profile-url-pattern' value=\"" + profile.urlPattern.replace(/"/g, "&quot;") + "\"></div>",

@@ -5,6 +5,7 @@
   const Errors = NewSiteCore.Errors;
 
   async function runWorkflow(options) {
+    const DiagnosticStore = NewSiteCore.DiagnosticStore;
     const siteId = options.siteId;
     const workflowName = options.workflowName;
     const traceId = options.traceId;
@@ -34,7 +35,9 @@
 
     for (const step of steps) {
       const startedAt = new Date().toISOString();
+      const startedTime = Date.now();
       context.currentStep = step.name;
+      context.currentStage = step.stage || "workflow";
       await Telemetry.emit({
         eventName: TELEMETRY_EVENTS.WORKFLOW_STEP_STARTED,
         traceId: traceId,
@@ -42,19 +45,41 @@
         component: "workflowRunner",
         workflowId: workflowId,
         stepName: step.name,
+        stage: context.currentStage,
         level: "info",
         message: step.description || step.name,
+        expected: step.expected || "",
         data: { expected: step.expected || "" }
       });
 
       try {
         const result = await step.run(context);
+        const durationMs = Date.now() - startedTime;
         context.results[step.name] = result;
         context.timeline.push({
           stepName: step.name,
+          stage: context.currentStage,
           status: "completed",
           startedAt: startedAt,
-          finishedAt: new Date().toISOString()
+          finishedAt: new Date().toISOString(),
+          expected: step.expected || "",
+          actual: result && result.actual ? result.actual : "",
+          durationMs: durationMs
+        });
+
+        await DiagnosticStore.recordStepEvidence({
+          traceId: traceId,
+          workflowId: workflowId,
+          stage: context.currentStage,
+          stepName: step.name,
+          status: "completed",
+          expected: step.expected || "",
+          actual: result && result.actual ? result.actual : "",
+          selectorName: result && result.selectorName ? result.selectorName : "",
+          selectorValue: result && result.selectorValue ? result.selectorValue : "",
+          foundBy: result && result.foundBy ? result.foundBy : "",
+          elapsedMs: durationMs,
+          snapshot: result && result.snapshot ? result.snapshot : null
         });
 
         await Telemetry.emit({
@@ -64,19 +89,47 @@
           component: "workflowRunner",
           workflowId: workflowId,
           stepName: step.name,
+          stage: context.currentStage,
           level: "info",
           message: "Workflow step completed",
+          durationMs: durationMs,
+          expected: step.expected || "",
+          actual: result && result.actual ? result.actual : "",
+          selectorName: result && result.selectorName ? result.selectorName : "",
+          selectorValue: result && result.selectorValue ? result.selectorValue : "",
           data: { result: result }
         });
       } catch (error) {
         const structuredError = Errors.toStructuredError(error);
         structuredError.workflowStep = step.name;
+        structuredError.failedStage = structuredError.failedStage || context.currentStage;
+        structuredError.traceId = structuredError.traceId || traceId;
+        structuredError.workflowId = structuredError.workflowId || workflowId;
+        const durationMs = Date.now() - startedTime;
         context.timeline.push({
           stepName: step.name,
+          stage: context.currentStage,
           status: "failed",
           startedAt: startedAt,
           finishedAt: new Date().toISOString(),
+          expected: step.expected || "",
+          actual: structuredError.actual || "",
+          durationMs: durationMs,
           error: structuredError
+        });
+
+        await DiagnosticStore.recordStepEvidence({
+          traceId: traceId,
+          workflowId: workflowId,
+          stage: context.currentStage,
+          stepName: step.name,
+          status: "failed",
+          expected: step.expected || "",
+          actual: structuredError.actual || "",
+          selectorName: structuredError.selectorName || "",
+          selectorValue: structuredError.selector || "",
+          elapsedMs: durationMs,
+          snapshot: structuredError.pageSummary || null
         });
 
         await Telemetry.emit({
@@ -86,8 +139,14 @@
           component: "workflowRunner",
           workflowId: workflowId,
           stepName: step.name,
+          stage: context.currentStage,
           level: "error",
           message: structuredError.message,
+          durationMs: durationMs,
+          expected: step.expected || "",
+          actual: structuredError.actual || "",
+          selectorName: structuredError.selectorName || "",
+          selectorValue: structuredError.selector || "",
           data: structuredError
         });
 
@@ -98,8 +157,11 @@
           component: "workflowRunner",
           workflowId: workflowId,
           stepName: step.name,
+          stage: context.currentStage,
           level: "error",
           message: "Workflow failed",
+          expected: step.expected || "",
+          actual: structuredError.actual || "",
           data: structuredError
         });
 
@@ -108,7 +170,9 @@
           traceId: traceId,
           workflowId: workflowId,
           failedStep: step.name,
+          failedStage: context.currentStage,
           timeline: context.timeline,
+          results: context.results,
           error: structuredError
         };
       }

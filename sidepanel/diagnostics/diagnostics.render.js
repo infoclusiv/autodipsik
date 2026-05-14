@@ -1,53 +1,45 @@
 (function initDiagnosticsRender(globalScope) {
   const NewSiteSidepanel = globalScope.NewSiteSidepanel = globalScope.NewSiteSidepanel || {};
   const store = NewSiteSidepanel.DiagnosticsStore.state;
-  const json = NewSiteSidepanel.LogView.renderJson;
-
-  function filterEvents(events) {
-    return (events || []).filter(function keep(event) {
-      const levelOk = !store.levelFilter || event.level === store.levelFilter;
-      const traceOk = !store.traceFilter || event.traceId.indexOf(store.traceFilter) !== -1;
-      return levelOk && traceOk;
-    });
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
   function render(root) {
     const diagnostics = store.diagnostics;
-    const events = diagnostics ? filterEvents(diagnostics.events) : [];
+    const summary = diagnostics ? diagnostics.aiDebugSummary || {} : {};
 
     root.innerHTML = [
       "<div class='card'>",
       "<h2>Diagnostics</h2>",
-      "<div class='form-grid'>",
-      "<div><label>Level filter</label><select id='diag-level-filter'><option value=''>All</option><option value='debug'>debug</option><option value='info'>info</option><option value='warn'>warn</option><option value='error'>error</option></select></div>",
-      "<div><label>Trace filter</label><input id='diag-trace-filter' value=\"" + store.traceFilter.replace(/"/g, "&quot;") + "\" placeholder='trace id fragment'></div>",
-      "</div>",
       "<div class='button-row'>",
       "<button id='diag-refresh'>Refresh</button>",
-      "<button class='primary' id='diag-export'>Export diagnostic JSON</button>",
+      "<button class='primary' id='diag-export'>Export AI diagnostic JSON</button>",
       "<button id='diag-copy-summary'>Copy AI debug summary</button>",
       "</div>",
       "</div>",
       "<div class='card'>",
       "<h3>AI Debug Summary</h3>",
-      "<pre>" + json(diagnostics ? diagnostics.aiDebugSummary : {}) + "</pre>",
-      "</div>",
-      "<div class='card'>",
-      "<h3>Recent Events</h3>",
-      (events.length ? events.map(function mapEvent(event) {
-        return "<div class='event-item'><strong>" + event.eventName + "</strong><div>" + event.level + " | " + event.traceId + "</div><div>" + event.message + "</div></div>";
-      }).join("") : "<div class='muted'>No diagnostics loaded.</div>"),
-      "</div>",
-      "<div class='card'>",
-      "<h3>Raw Diagnostic Package</h3>",
-      "<pre>" + json(diagnostics || {}) + "</pre>",
+      (diagnostics ? [
+        "<div class='metrics-grid'>",
+        "<div class='metric-card'><span>Status</span><strong>" + escapeHtml(summary.status || "unknown") + "</strong></div>",
+        "<div class='metric-card'><span>Probable failure area</span><strong>" + escapeHtml(summary.probableFailureArea || "unknown") + "</strong></div>",
+        "<div class='metric-card'><span>Failed stage</span><strong>" + escapeHtml(summary.failedStage || "none") + "</strong></div>",
+        "<div class='metric-card'><span>Failed step</span><strong>" + escapeHtml(summary.failedStep || "none") + "</strong></div>",
+        "<div class='metric-card'><span>Trace ID</span><strong>" + escapeHtml(summary.traceId || "none") + "</strong></div>",
+        "<div class='metric-card'><span>Workflow ID</span><strong>" + escapeHtml(summary.workflowId || "none") + "</strong></div>",
+        "</div>",
+        "<div class='timeline-item'><strong>Expected</strong><div>" + escapeHtml(summary.expected || "N/A") + "</div></div>",
+        "<div class='timeline-item'><strong>Actual</strong><div>" + escapeHtml(summary.actual || "N/A") + "</div></div>",
+        "<div class='timeline-item'><strong>Recommended next checks</strong><div>" + escapeHtml((summary.recommendedNextChecks || []).join(" | ") || "None") + "</div></div>",
+        "<div class='timeline-item'><strong>Next best action</strong><div>" + escapeHtml(summary.nextBestAction || "None") + "</div></div>"
+      ].join("") : "<div class='muted'>No diagnostics loaded.</div>"),
       "</div>"
     ].join("");
-
-    const levelSelect = document.getElementById("diag-level-filter");
-    if (levelSelect) {
-      levelSelect.value = store.levelFilter;
-    }
   }
 
   NewSiteSidepanel.DiagnosticsRender = {

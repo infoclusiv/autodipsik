@@ -9,6 +9,7 @@
   const Errors = NewSiteCore.Errors;
   const Telemetry = NewSiteCore.Telemetry;
   const TELEMETRY_EVENTS = NewSiteCore.TELEMETRY_EVENTS;
+  const DiagnosticStore = NewSiteCore.DiagnosticStore;
 
   const requiredSelectorsForMainWorkflow = [
     "fileInput",
@@ -137,6 +138,11 @@
       component: "automator",
       level: level,
       message: message,
+      stage: context.currentStage || "",
+      expected: data && data.expected ? data.expected : "",
+      actual: data && data.actual ? data.actual : "",
+      selectorName: data && data.selectorName ? data.selectorName : "",
+      selectorValue: data && data.selectorValue ? data.selectorValue : "",
       data: Object.assign({
         step: context.currentStep || "",
         promptLength: context.promptLength || 0,
@@ -202,7 +208,8 @@
     return Errors.createError(code, message, Object.assign({
       url: location.href,
       pageState: PageState.detectPageState(details.profile),
-      pageSummary: DomHelpers.getPageSummary()
+      pageSummary: DomHelpers.getPageSummary(),
+      failedStage: details.failedStage || "deepseek_workflow"
     }, details || {}));
   }
 
@@ -329,6 +336,7 @@
     const steps = [
       {
         name: "validate_input",
+        stage: "validate_input",
         description: "Validate selectors and workflow inputs for the DeepSeek workflow",
         expected: "Required selectors, file payload, and prompt text should be present.",
         run: async function runStep(context) {
@@ -387,6 +395,7 @@
       },
       {
         name: "wait_for_page_ready",
+        stage: "page_ready",
         description: "Wait for the DeepSeek composer to become available",
         expected: "A visible chat input should appear on the page.",
         run: async function runStep(context) {
@@ -421,15 +430,19 @@
             selectorValue: chatInputMatch.selectorValue,
             foundBy: chatInputMatch.foundBy
           });
+          await DiagnosticStore.recordRuntimeSnapshot(buildComposerDiagnosticSnapshot(profile));
 
           return {
             foundBy: chatInputMatch.foundBy,
-            selectorName: chatInputMatch.selectorName
+            selectorName: chatInputMatch.selectorName,
+            selectorValue: chatInputMatch.selectorValue,
+            actual: "A visible chat input was found and is ready."
           };
         }
       },
       {
         name: "attach_file",
+        stage: "file_attachment",
         description: "Attach the Excel file through the DeepSeek file input",
         expected: "The file input should accept the Excel file and expose it to the page.",
         run: async function runStep(context) {
@@ -477,12 +490,17 @@
           return {
             attached: true,
             fileName: attachedFile.name,
-            sizeBytes: attachedFile.size
+            sizeBytes: attachedFile.size,
+            selectorName: fileInputMatch.selectorName,
+            selectorValue: fileInputMatch.selectorValue,
+            foundBy: fileInputMatch.foundBy,
+            actual: "The file input accepted the selected file."
           };
         }
       },
       {
         name: "confirm_attachment",
+        stage: "file_attachment",
         description: "Confirm that the attached file is visible or accept a timed fallback",
         expected: "DeepSeek should expose an attachment signal after file upload.",
         run: async function runStep(context) {
@@ -502,7 +520,10 @@
             });
             return {
               confirmed: true,
-              foundBy: attachmentMatch.foundBy
+              foundBy: attachmentMatch.foundBy,
+              selectorName: attachmentMatch.selectorName,
+              selectorValue: attachmentMatch.selectorValue,
+              actual: "The attachment was confirmed by selector or heuristic."
             };
           }
 
@@ -524,6 +545,7 @@
       },
       {
         name: "insert_prompt",
+        stage: "prompt_insert",
         description: "Insert the prompt into the DeepSeek chat input",
         expected: "The chat input should receive the prompt text and reflect it in the composer.",
         run: async function runStep(context) {
@@ -550,17 +572,27 @@
 
           return {
             inserted: true,
-            promptLength: workflowInput.promptText.length
+            promptLength: workflowInput.promptText.length,
+            selectorName: "chatInput",
+            selectorValue: profile.selectors.chatInput,
+            actual: "The prompt text is visible in the composer."
           };
         }
       },
       {
         name: "find_send_button",
+        stage: "submit",
         description: "Locate an enabled send button near the composer",
         expected: "A clickable send button should be found before submit.",
         run: async function runStep(context) {
           const startedAt = Date.now();
           let sendMatch = null;
+
+          await emitWorkflowEvent(context, TELEMETRY_EVENTS.DEEPSEEK_SEND_BUTTON_SEARCH_STARTED, "info", "Send button search started", {
+            selectorName: "sendButton",
+            selectorValue: profile.selectors.sendButton,
+            expected: "A visible and enabled send button should be available near the composer."
+          });
 
           while (Date.now() - startedAt < profile.timing.sendButtonReadyTimeoutMs) {
             const selectorButton = queryVisibleElement(profile.selectors.sendButton);
@@ -591,8 +623,25 @@
           }
 
           if (!sendMatch) {
+            const sendEvidence = {
+              traceId: context.traceId,
+              workflowId: context.workflowId,
+              selectorName: "sendButton",
+              selectorValue: profile.selectors.sendButton,
+              clickable: false,
+              disabled: true,
+              visibleButtonsNearComposer: getVisibleButtonsNearComposer(profile),
+              sendButtonSnapshot: null
+            };
+            await DiagnosticStore.recordSendButtonEvidence(sendEvidence);
+            await emitWorkflowEvent(context, TELEMETRY_EVENTS.DEEPSEEK_SEND_BUTTON_NOT_FOUND, "error", "Send button not found", {
+              selectorName: "sendButton",
+              selectorValue: profile.selectors.sendButton,
+              actual: "No enabled send button was found before timeout."
+            });
             throw buildWorkflowError("SEND_BUTTON_NOT_FOUND", "The send button could not be found or was disabled.", {
               profile: profile,
+              failedStage: "submit",
               expected: "A visible and enabled send button should be available near the composer.",
               actual: "No enabled send button was found before timeout.",
               selectorName: "sendButton",
@@ -601,6 +650,18 @@
           }
 
           context.sendButton = sendMatch.element;
+          context.sendButtonEvidence = {
+            traceId: context.traceId,
+            workflowId: context.workflowId,
+            selectorName: sendMatch.selectorName,
+            selectorValue: sendMatch.selectorValue,
+            foundBy: sendMatch.foundBy,
+            clickable: true,
+            disabled: false,
+            elementSummary: DomHelpers.getElementSummary(sendMatch.element),
+            visibleButtonsNearComposer: getVisibleButtonsNearComposer(profile)
+          };
+          await DiagnosticStore.recordSendButtonEvidence(context.sendButtonEvidence);
           await emitWorkflowEvent(
             context,
             sendMatch.foundBy === "heuristic" ? TELEMETRY_EVENTS.DEEPSEEK_SEND_BUTTON_HEURISTIC_USED : TELEMETRY_EVENTS.DEEPSEEK_SEND_BUTTON_FOUND,
@@ -614,12 +675,17 @@
           );
 
           return {
-            foundBy: sendMatch.foundBy
+            foundBy: sendMatch.foundBy,
+            selectorName: sendMatch.selectorName,
+            selectorValue: sendMatch.selectorValue,
+            snapshot: context.sendButtonEvidence,
+            actual: "An enabled send button was found."
           };
         }
       },
       {
         name: "click_send",
+        stage: "submit",
         description: "Click the send button to submit the message",
         expected: "The send button click should dispatch the DeepSeek prompt with attachment.",
         run: async function runStep(context) {
@@ -630,10 +696,17 @@
             };
           }
 
+          const beforeClickSnapshot = DomHelpers.getElementSummary(context.sendButton);
           const clicked = DomHelpers.clickElement(context.sendButton);
           if (!clicked) {
+            await emitWorkflowEvent(context, TELEMETRY_EVENTS.DEEPSEEK_SEND_FAILED, "error", "Send button click failed", {
+              selectorName: "sendButton",
+              selectorValue: profile.selectors.sendButton,
+              actual: "clickElement returned false."
+            });
             throw buildWorkflowError("SEND_CLICK_FAILED", "The send button could not be clicked.", {
               profile: profile,
+              failedStage: "submit",
               expected: "The send button should be clickable.",
               actual: "clickElement returned false."
             });
@@ -646,12 +719,20 @@
           });
 
           return {
-            clicked: true
+            clicked: true,
+            selectorName: "sendButton",
+            selectorValue: profile.selectors.sendButton,
+            snapshot: {
+              beforeClick: beforeClickSnapshot,
+              afterClick: DomHelpers.getElementSummary(context.sendButton)
+            },
+            actual: "The send button click was dispatched."
           };
         }
       },
       {
         name: "finalize",
+        stage: "finalize",
         description: "Return a compact workflow summary for diagnostics",
         expected: "The workflow should finish with an explainable summary.",
         run: async function runStep(context) {
@@ -661,7 +742,8 @@
           return {
             dryRun: workflowInput.dryRun,
             finalPageState: PageState.detectPageState(profile),
-            pageSummary: DomHelpers.getPageSummary()
+            pageSummary: DomHelpers.getPageSummary(),
+            actual: "The workflow finished and returned a final page summary."
           };
         }
       }
@@ -695,6 +777,13 @@
         selectedFile: workflowInput.selectedFile || null
       };
       Object.assign(diagnosticPackage, buildComposerDiagnosticSnapshot(profile));
+      diagnosticPackage.sendButtonEvidence = result.results && result.results.find_send_button
+        ? Object.assign({}, result.results.find_send_button.snapshot || {}, {
+          selectorName: result.results.find_send_button.selectorName || "sendButton",
+          selectorValue: result.results.find_send_button.selectorValue || profile.selectors.sendButton,
+          foundBy: result.results.find_send_button.foundBy || ""
+        })
+        : null;
 
       await emitWorkflowEvent({
         traceId: traceId,

@@ -1,7 +1,6 @@
 (function initAutomationRender(globalScope) {
   const NewSiteSidepanel = globalScope.NewSiteSidepanel = globalScope.NewSiteSidepanel || {};
   const store = NewSiteSidepanel.AutomationTesterStore.state;
-  const json = NewSiteSidepanel.LogView.renderJson;
 
   function escapeHtml(value) {
     return String(value || "")
@@ -40,20 +39,13 @@
     const workflow = store.workflowResult || {};
     const gatewayStatus = store.gatewayStatus || {};
     const selectedFile = store.selectedFile || gatewayStatus.selectedFile || null;
-    const latestPayload = {
-      runtimeStatus: runtime,
-      gatewayStatus: gatewayStatus,
-      selectedFile: selectedFile,
-      fileSelectionResult: store.fileSelectionResult,
-      pageState: pageState,
-      workflowResult: workflow,
-      lastError: store.lastError
-    };
+    const lastRunSummary = store.lastRunSummary || workflow || {};
+    const error = store.lastError || lastRunSummary.error || null;
 
     root.innerHTML = [
       "<div class='card'>",
       "<h2>Automation Tester</h2>",
-      "<p class='field-help'>Use the local gateway to pick an Excel file, then run the DeepSeek workflow with the selectors managed from Site Profile.</p>",
+      "<p class='field-help'>Run the DeepSeek workflow end to end from one button. The extension will connect the gateway, ensure the DeepSeek tab is ready, run preflight, and then execute the upload.</p>",
       "<div class='inline-metrics'>",
       "<div class='metric-card'><span>Gateway</span><strong>" + renderStatusPill(gatewayStatus) + "</strong></div>",
       "<div class='metric-card'><span>Selected file</span><strong>" + escapeHtml(selectedFile ? selectedFile.name : "None") + "</strong></div>",
@@ -61,13 +53,9 @@
       "<div class='metric-card'><span>Workflow</span><strong>" + escapeHtml(workflow.workflowId || "Idle") + "</strong></div>",
       "</div>",
       "<div class='button-row'>",
-      "<button id='automation-connect-gateway'>Connect Gateway</button>",
-      "<button id='automation-disconnect-gateway'>Disconnect Gateway</button>",
       "<button id='automation-select-file'>Select Excel File</button>",
-      "<button id='open-target-site'>Open DeepSeek</button>",
-      "<button id='detect-page-state'>Detect page state</button>",
-      "<button id='run-dry-run'>Run dry run</button>",
       "<button class='primary' id='run-automation'>Run automation</button>",
+      "<button id='automation-export-diagnostics'>Export diagnostic</button>",
       "</div>",
       "</div>",
       "<div class='card'>",
@@ -87,14 +75,23 @@
         : "<div class='muted'>No Excel file selected yet.</div>"),
       "</div>",
       "<div class='card'>",
+      "<h3>Last Run Summary</h3>",
+      "<div class='metrics-grid'>",
+      "<div class='metric-card'><span>Status</span><strong>" + escapeHtml(lastRunSummary.status || "Idle") + "</strong></div>",
+      "<div class='metric-card'><span>Failed stage</span><strong>" + escapeHtml(lastRunSummary.failedStage || "None") + "</strong></div>",
+      "<div class='metric-card'><span>Failed step</span><strong>" + escapeHtml(lastRunSummary.failedStep || "None") + "</strong></div>",
+      "<div class='metric-card'><span>Trace ID</span><strong>" + escapeHtml(lastRunSummary.traceId || "None") + "</strong></div>",
+      "<div class='metric-card'><span>Workflow ID</span><strong>" + escapeHtml(lastRunSummary.workflowId || "None") + "</strong></div>",
+      "<div class='metric-card'><span>Last error</span><strong>" + escapeHtml(error ? error.message : "None") + "</strong></div>",
+      "</div>",
+      "</div>",
+      "<div class='card'>",
       "<h3>Runtime Snapshot</h3>",
       "<div class='metrics-grid'>",
       "<div class='metric-card'><span>Current Site</span><strong>deepseek</strong></div>",
       "<div class='metric-card'><span>Current URL</span><strong>" + escapeHtml(runtime.activeTabUrl || "Unknown") + "</strong></div>",
       "<div class='metric-card'><span>Detected Page State</span><strong>" + escapeHtml(pageState.pageState ? pageState.pageState.state : "Unknown") + "</strong></div>",
-      "<div class='metric-card'><span>Current Workflow</span><strong>" + escapeHtml(workflow.workflowId || "None") + "</strong></div>",
-      "<div class='metric-card'><span>Current Step</span><strong>" + escapeHtml(workflow.failedStep || "Completed/Idle") + "</strong></div>",
-      "<div class='metric-card'><span>Last Error</span><strong>" + escapeHtml(store.lastError ? store.lastError.message : "None") + "</strong></div>",
+      "<div class='metric-card'><span>Gateway state</span><strong>" + escapeHtml(gatewayStatus.state || "Unknown") + "</strong></div>",
       "</div>",
       "</div>",
       "<div class='card'>",
@@ -104,8 +101,15 @@
       }).join("") : "<div class='muted'>No workflow executed yet.</div>"),
       "</div>",
       "<div class='card'>",
-      "<h3>Latest Payload</h3>",
-      "<pre>" + json(latestPayload) + "</pre>",
+      "<h3>Advanced Actions</h3>",
+      "<p class='field-help'>These controls remain available for diagnostics, but they are not required for the normal workflow.</p>",
+      "<div class='button-row'>",
+      "<button id='automation-connect-gateway'>Connect Gateway</button>",
+      "<button id='automation-disconnect-gateway'>Disconnect Gateway</button>",
+      "<button id='open-target-site'>Open DeepSeek</button>",
+      "<button id='detect-page-state'>Detect page state</button>",
+      "<button id='run-dry-run'>Run dry run</button>",
+      "</div>",
       "</div>"
     ].join("");
   }
