@@ -14,6 +14,7 @@
   const Telemetry = NewSiteCore.Telemetry;
   const Errors = NewSiteCore.Errors;
   const DiagnosticStore = NewSiteCore.DiagnosticStore;
+  const DeepSeekWorkflowContracts = NewSiteCore.DeepSeekWorkflowContracts;
   const DeepSeekSiteProfile = DeepSeekAutomation.DeepSeekSiteProfile;
   const Selectors = DeepSeekAutomation.DeepSeekSelectors;
   const DomHelpers = DeepSeekAutomation.DeepSeekDomHelpers;
@@ -225,6 +226,9 @@
 
   async function handleRunAutomation(message) {
     const traceId = message.traceId || Telemetry.createTraceId("workflow");
+    DeepSeekWorkflowContracts.validateRunAutomationInput(message.input || {}, {
+      messageType: message.type
+    });
     const profile = await getProfile(message);
     await DiagnosticStore.recordContentScriptHealth({
       traceId: traceId,
