@@ -22,7 +22,7 @@
       };
     }
 
-    return {
+    const normalized = {
       code: input.code || "GENERIC_ERROR",
       message: input.message || "Unexpected error",
       expected: input.expected || "",
@@ -42,6 +42,23 @@
       pageSummary: input.pageSummary || null,
       nextChecks: Array.isArray(input.nextChecks) ? input.nextChecks : []
     };
+
+    [
+      "messageType",
+      "manifestMatchExpectation",
+      "contentScriptHandler",
+      "injectionAttempted",
+      "injectedFiles",
+      "originalError",
+      "retryError",
+      "response"
+    ].forEach(function copyOptionalField(key) {
+      if (typeof input[key] !== "undefined") {
+        normalized[key] = input[key];
+      }
+    });
+
+    return normalized;
   }
 
   function createError(code, message, details) {

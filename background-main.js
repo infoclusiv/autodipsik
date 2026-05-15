@@ -114,6 +114,11 @@ importScripts(
 
   async function forwardToDeepSeekTab(message) {
     const activeTab = await ensureDeepSeekTab(message.traceId);
+    const failedStage = message.type === MESSAGE_TYPES.PAGE_STATE_DETECT
+      ? "detect_page_state"
+      : message.type === MESSAGE_TYPES.RUN_AUTOMATION
+        ? "run_actual_automation"
+        : "deepseek_message_forward";
 
     await Telemetry.emit({
       eventName: TELEMETRY_EVENTS.DEEPSEEK_TAB_DETECTED,
@@ -126,27 +131,41 @@ importScripts(
     });
 
     try {
-      return await TabManager.sendMessageWithContentScriptCheck(activeTab.id, message);
+      return await TabManager.sendMessageWithContentScriptCheck(activeTab.id, message, {
+        targetSiteId: "deepseek"
+      });
     } catch (error) {
       await DiagnosticStore.recordContentScriptHealth({
         traceId: message.traceId,
         available: false,
         activeTabUrl: activeTab.url || "",
         checkedAt: new Date().toISOString(),
-        reason: error.message
+        reason: error.message,
+        messageType: message.type,
+        failedStage: failedStage,
+        injectionAttempted: Boolean(error.injectionAttempted),
+        injectedFiles: error.injectedFiles || [],
+        originalError: error.originalError || "",
+        retryError: error.retryError || ""
       });
       throw Errors.createError("CONTENT_SCRIPT_UNAVAILABLE", "DeepSeek content script is unavailable.", {
-        expected: "The DeepSeek content script should be active on the current tab.",
+        failedStage: failedStage,
+        expected: "The DeepSeek content script should respond to the requested message.",
         actual: error.message,
         activeTabUrl: activeTab.url || "",
         messageType: message.type,
         manifestMatchExpectation: deepSeekConfig.urlPattern,
         contentScriptHandler: "sites/deepseek/content.js",
+        injectionAttempted: error.injectionAttempted || false,
+        injectedFiles: error.injectedFiles || [],
+        originalError: error.originalError || "",
+        retryError: error.retryError || "",
         suggestedFix: [
-          "Reload the DeepSeek tab.",
-          "Reload the extension.",
-          "Verify manifest content_scripts for https://chat.deepseek.com/*.",
-          "Verify sites/deepseek/content.js supports the message type."
+          "Confirm Chrome is loading the updated unpacked extension folder.",
+          "Open chrome://extensions and reload the extension.",
+          "Close and reopen the DeepSeek tab.",
+          "Inspect the DeepSeek tab console for content script initialization errors.",
+          "Verify the manifest content_scripts chain remains in the correct order."
         ]
       });
     }
@@ -346,19 +365,33 @@ importScripts(
 
     try {
       const tab = await TabManager.ensureTab(deepSeekConfig.baseUrl, deepSeekConfig.urlPattern);
-      await TabManager.waitForTabComplete(tab.id, 20000);
+      const readyTab = await TabManager.waitForTabComplete(tab.id, 20000);
       await DiagnosticStore.recordRuntimeSnapshot({
         traceId: traceId,
         stage: "ensure_deepseek_tab",
-        url: tab.url || deepSeekConfig.baseUrl,
-        tabId: tab.id,
-        title: tab.title || ""
+        url: readyTab.url || deepSeekConfig.baseUrl,
+        tabId: readyTab.id,
+        title: readyTab.title || ""
       });
+
+      const healthCheck = await TabManager.sendMessageWithContentScriptCheck(
+        readyTab.id,
+        {
+          type: MESSAGE_TYPES.DEEPSEEK_CONTENT_SCRIPT_PING,
+          traceId: traceId,
+          targetSiteId: "deepseek"
+        },
+        {
+          targetSiteId: "deepseek"
+        }
+      );
+
       await DiagnosticStore.recordContentScriptHealth({
         traceId: traceId,
-        available: true,
-        activeTabUrl: tab.url || deepSeekConfig.baseUrl,
-        checkedAt: new Date().toISOString()
+        available: Boolean(healthCheck && healthCheck.available),
+        activeTabUrl: readyTab.url || deepSeekConfig.baseUrl,
+        checkedAt: new Date().toISOString(),
+        response: healthCheck || null
       });
       await Telemetry.emit({
         eventName: TELEMETRY_EVENTS.DEEPSEEK_TAB_ENSURE_COMPLETED,
@@ -367,9 +400,9 @@ importScripts(
         component: "background",
         level: "info",
         message: "DeepSeek tab is ready",
-        data: { tabId: tab.id, url: tab.url || deepSeekConfig.baseUrl }
+        data: { tabId: readyTab.id, url: readyTab.url || deepSeekConfig.baseUrl }
       });
-      return tab;
+      return readyTab;
     } catch (error) {
       const structured = Errors.toStructuredError(error);
       structured.failedStage = "ensure_deepseek_tab";

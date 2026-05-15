@@ -20,7 +20,8 @@
     GATEWAY_EXECUTE_UPLOAD: "AUTODIPSIK_GATEWAY_EXECUTE_UPLOAD",
     GATEWAY_EXPORT_DIAGNOSTICS: "AUTODIPSIK_GATEWAY_EXPORT_DIAGNOSTICS",
     DEEPSEEK_ATTACH_FILE: "AUTODIPSIK_ATTACH_FILE_TO_DEEPSEEK",
-    DEEPSEEK_TAB_ENSURE: "AUTODIPSIK_DEEPSEEK_TAB_ENSURE"
+    DEEPSEEK_TAB_ENSURE: "AUTODIPSIK_DEEPSEEK_TAB_ENSURE",
+    DEEPSEEK_CONTENT_SCRIPT_PING: "AUTODIPSIK_DEEPSEEK_CONTENT_SCRIPT_PING"
   };
 
   NewSiteCore.STORAGE_KEYS = {
@@ -107,6 +108,15 @@
     DEEPSEEK_TAB_ENSURE_STARTED: "deepseek.tab.ensure.started",
     DEEPSEEK_TAB_ENSURE_COMPLETED: "deepseek.tab.ensure.completed",
     DEEPSEEK_TAB_ENSURE_FAILED: "deepseek.tab.ensure.failed",
+    DEEPSEEK_CONTENT_SCRIPT_PING_STARTED: "deepseek.content_script.ping.started",
+    DEEPSEEK_CONTENT_SCRIPT_PING_COMPLETED: "deepseek.content_script.ping.completed",
+    DEEPSEEK_CONTENT_SCRIPT_PING_FAILED: "deepseek.content_script.ping.failed",
+    DEEPSEEK_CONTENT_SCRIPT_INJECTION_STARTED: "deepseek.content_script.injection.started",
+    DEEPSEEK_CONTENT_SCRIPT_INJECTION_COMPLETED: "deepseek.content_script.injection.completed",
+    DEEPSEEK_CONTENT_SCRIPT_INJECTION_FAILED: "deepseek.content_script.injection.failed",
+    DEEPSEEK_CONTENT_SCRIPT_RETRY_STARTED: "deepseek.content_script.retry.started",
+    DEEPSEEK_CONTENT_SCRIPT_RETRY_COMPLETED: "deepseek.content_script.retry.completed",
+    DEEPSEEK_CONTENT_SCRIPT_RETRY_FAILED: "deepseek.content_script.retry.failed",
     DEEPSEEK_PREFLIGHT_STARTED: "deepseek.preflight.started",
     DEEPSEEK_PREFLIGHT_COMPLETED: "deepseek.preflight.completed",
     DEEPSEEK_PREFLIGHT_FAILED: "deepseek.preflight.failed",

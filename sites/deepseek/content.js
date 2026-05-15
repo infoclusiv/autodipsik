@@ -1,6 +1,14 @@
 (function initDeepSeekContent(globalScope) {
   const NewSiteCore = globalScope.NewSiteCore = globalScope.NewSiteCore || {};
   const DeepSeekAutomation = globalScope.DeepSeekAutomation = globalScope.DeepSeekAutomation || {};
+
+  if (DeepSeekAutomation.__contentScriptInitialized) {
+    return;
+  }
+
+  DeepSeekAutomation.__contentScriptInitialized = true;
+  DeepSeekAutomation.__contentScriptLoadedAt = new Date().toISOString();
+
   const MESSAGE_TYPES = NewSiteCore.MESSAGE_TYPES;
   const TELEMETRY_EVENTS = NewSiteCore.TELEMETRY_EVENTS;
   const Telemetry = NewSiteCore.Telemetry;
@@ -11,6 +19,11 @@
   const DomHelpers = DeepSeekAutomation.DeepSeekDomHelpers;
   const PageState = DeepSeekAutomation.DeepSeekPageState;
   const Automator = DeepSeekAutomation.ChatAutomator;
+
+  console.debug("[Autodipsik][DeepSeek] content script loaded", {
+    url: location.href,
+    loadedAt: DeepSeekAutomation.__contentScriptLoadedAt
+  });
 
   function base64ToUint8Array(base64) {
     const binary = atob(base64);
@@ -283,6 +296,16 @@
           return handlePageStateDetect(message);
         case MESSAGE_TYPES.RUN_AUTOMATION:
           return handleRunAutomation(message);
+        case MESSAGE_TYPES.DEEPSEEK_CONTENT_SCRIPT_PING:
+          return {
+            status: "completed",
+            siteId: "deepseek",
+            contentScript: "sites/deepseek/content.js",
+            available: true,
+            url: location.href,
+            loadedAt: DeepSeekAutomation.__contentScriptLoadedAt || "",
+            traceId: message.traceId || Telemetry.createTraceId("deepseek_ping")
+          };
         case MESSAGE_TYPES.DIAGNOSTICS_GET:
           return {
             status: "completed",
