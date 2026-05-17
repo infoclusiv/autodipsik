@@ -1,0 +1,21 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.class
+
+# Runtime logs/events
+runtime/*.jsonl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+.env.*
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
