@@ -16,6 +16,7 @@
     "sites/deepseek/selectors.js",
     "sites/deepseek/domHelpers.js",
     "sites/deepseek/pageState.js",
+    "sites/deepseek/filePayloadHelpers.js",
     "sites/deepseek/chatAutomator.js",
     "sites/deepseek/content.js"
   ];

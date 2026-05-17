@@ -5,6 +5,7 @@
   const Selectors = DeepSeekAutomation.DeepSeekSelectors;
   const DomHelpers = DeepSeekAutomation.DeepSeekDomHelpers;
   const PageState = DeepSeekAutomation.DeepSeekPageState;
+  const FilePayloadHelpers = DeepSeekAutomation.FilePayloadHelpers;
   const WorkflowRunner = NewSiteCore.WorkflowRunner;
   const Errors = NewSiteCore.Errors;
   const Telemetry = NewSiteCore.Telemetry;
@@ -27,22 +28,6 @@
     const source = String(filePath || fallbackName || "").toLowerCase();
     const match = source.match(/(\.[a-z0-9]+)$/);
     return match ? match[1] : "";
-  }
-
-  function base64ToUint8Array(base64) {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) {
-      bytes[index] = binary.charCodeAt(index);
-    }
-    return bytes;
-  }
-
-  function base64ToFile(filePayload) {
-    return new File([base64ToUint8Array(filePayload.contentBase64)], filePayload.name, {
-      type: filePayload.mimeType || "application/octet-stream",
-      lastModified: Date.now()
-    });
   }
 
   function isEnabled(element) {
@@ -291,7 +276,7 @@
   }
 
   function attachFileThroughInput(fileInput, filePayload) {
-    const file = base64ToFile(filePayload);
+    const file = FilePayloadHelpers.base64ToFile(filePayload.contentBase64, filePayload.name, filePayload.mimeType);
     const transfer = new DataTransfer();
     transfer.items.add(file);
     fileInput.files = transfer.files;

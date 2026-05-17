@@ -20,27 +20,12 @@
   const DomHelpers = DeepSeekAutomation.DeepSeekDomHelpers;
   const PageState = DeepSeekAutomation.DeepSeekPageState;
   const Automator = DeepSeekAutomation.ChatAutomator;
+  const FilePayloadHelpers = DeepSeekAutomation.FilePayloadHelpers;
 
   console.debug("[Autodipsik][DeepSeek] content script loaded", {
     url: location.href,
     loadedAt: DeepSeekAutomation.__contentScriptLoadedAt
   });
-
-  function base64ToUint8Array(base64) {
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) {
-      bytes[index] = binary.charCodeAt(index);
-    }
-    return bytes;
-  }
-
-  function base64ToFile(contentBase64, name, mimeType) {
-    return new File([base64ToUint8Array(contentBase64)], name, {
-      type: mimeType || "application/octet-stream",
-      lastModified: Date.now()
-    });
-  }
 
   async function attachFileToDeepSeek(filePayload, traceId) {
     const profile = await DeepSeekSiteProfile.loadSiteProfile();
@@ -81,7 +66,7 @@
       data: { selector: profile.selectors.fileInput }
     });
 
-    const file = base64ToFile(filePayload.contentBase64, filePayload.name, filePayload.mimeType);
+    const file = FilePayloadHelpers.base64ToFile(filePayload.contentBase64, filePayload.name, filePayload.mimeType);
     const transfer = new DataTransfer();
     transfer.items.add(file);
     input.files = transfer.files;

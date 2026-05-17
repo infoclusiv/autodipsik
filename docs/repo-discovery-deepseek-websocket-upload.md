@@ -1,5 +1,7 @@
 # Repository Discovery: DeepSeek WebSocket Upload
 
+> Historical document: this discovery note reflects the repository state on 2026-05-13 before the Python gateway and current DeepSeek runtime were fully added. Use `docs/architecture/current-modularization-map.md` as the current architecture source.
+
 ## Date
 
 2026-05-13
