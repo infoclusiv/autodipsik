@@ -73,6 +73,7 @@ Use this checklist after each refactor phase. The goal is to confirm that modula
 - [ ] Confirm errors include both `expected` and `actual`.
 - [ ] Confirm the exported package does not contain raw file `contentBase64`.
 - [ ] Confirm sensitive local file paths remain redacted where applicable.
+- [ ] Run the readiness-gates scenarios in [deepseek-readiness-gates-regression.md](C:/Users/carlo/Downloads/extensions/autodipsik/docs/testing/deepseek-readiness-gates-regression.md).
 
 ## Failure Scenarios
 

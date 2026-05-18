@@ -40,6 +40,7 @@
       workflowStep: input.workflowStep || "",
       pageState: input.pageState || null,
       pageSummary: input.pageSummary || null,
+      snapshot: input.snapshot || null,
       nextChecks: Array.isArray(input.nextChecks) ? input.nextChecks : []
     };
 

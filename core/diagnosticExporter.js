@@ -7,16 +7,56 @@
     return Array.isArray(list) && list.length ? list[list.length - 1] : null;
   }
 
+  function findLatestStepEvidence(stepEvidence, stepName) {
+    if (!Array.isArray(stepEvidence)) {
+      return null;
+    }
+    for (let index = stepEvidence.length - 1; index >= 0; index -= 1) {
+      if (stepEvidence[index] && stepEvidence[index].stepName === stepName) {
+        return stepEvidence[index];
+      }
+    }
+    return null;
+  }
+
+  function inferFailureArea(error, workflow, readinessSummary) {
+    const code = error && error.code ? error.code : "";
+    const failedStep = workflow && workflow.failedStep ? workflow.failedStep : "";
+
+    if (code === "FILE_ATTACHMENT_NOT_READY" || failedStep === "wait_for_attachment_ready") {
+      return "attachment_readiness";
+    }
+    if (code === "COMPOSER_NOT_READY_TO_SEND" || failedStep === "wait_for_composer_ready_to_send") {
+      if (readinessSummary && readinessSummary.failedCondition) {
+        return readinessSummary.failedCondition;
+      }
+      return "composer_readiness";
+    }
+    if (/SEND_BUTTON|SEND_CLICK/.test(code) || failedStep === "click_send") {
+      return "send_button_readiness";
+    }
+    if (/PROMPT/.test(code)) {
+      return "prompt_readiness";
+    }
+    return error ? (error.selectorName || error.workflowStep || error.code || "unknown") : "none";
+  }
+
   function inferFailureCategory(error, workflow) {
     const code = error && error.code ? error.code : "";
     const step = workflow && workflow.failedStep ? workflow.failedStep : "";
     if (/GATEWAY|FILE_SELECTION_CANCELLED|PYTHON_GATEWAY/.test(code)) {
       return "gateway_or_file_resolution";
     }
-    if (/SEND_BUTTON|SEND_CLICK/.test(code) || step === "find_send_button" || step === "click_send") {
+    if (code === "FILE_ATTACHMENT_NOT_READY" || step === "wait_for_attachment_ready") {
+      return "attachment_readiness";
+    }
+    if (code === "COMPOSER_NOT_READY_TO_SEND" || step === "wait_for_composer_ready_to_send") {
+      return "composer_readiness";
+    }
+    if (/SEND_BUTTON|SEND_CLICK|COMPOSER_NOT_READY_TO_SEND/.test(code) || step === "find_send_button" || step === "wait_for_composer_ready_to_send" || step === "click_send") {
       return "selector_changed_or_disabled_button";
     }
-    if (/CHAT_INPUT|FILE_INPUT/.test(code)) {
+    if (/CHAT_INPUT|FILE_INPUT|FILE_ATTACHMENT_NOT_READY/.test(code)) {
       return "selector_or_page_readiness";
     }
     if (/PROMPT/.test(code)) {
@@ -38,6 +78,12 @@
 
   function inferNextAction(error, workflow) {
     const category = inferFailureCategory(error, workflow);
+    if (category === "attachment_readiness") {
+      return "Verify the attachment card shows the selected Excel file near the composer and that upload progress has fully cleared.";
+    }
+    if (category === "composer_readiness") {
+      return "Confirm attachment readiness, prompt presence, and send-button enabled state in the same composer state before clicking send.";
+    }
     if (category === "selector_changed_or_disabled_button") {
       return "Test and update selectors.sendButton in Site Profile Editor.";
     }
@@ -50,12 +96,114 @@
     return "Review the latest workflow timeline and the failed step evidence.";
   }
 
+  function summarizeAttachmentReadiness(snapshot) {
+    if (!snapshot) {
+      return null;
+    }
+    return {
+      attachmentReady: Boolean(snapshot.attachmentReady || (
+        snapshot.attachmentVisible
+        && snapshot.matchedByFileName
+        && snapshot.matchedByExtension
+        && snapshot.nearComposer
+        && !snapshot.uploadProgressVisible
+      )),
+      fileNameExpected: snapshot.fileNameExpected || "",
+      matchedText: snapshot.matchedText || "",
+      matchedByFileName: Boolean(snapshot.matchedByFileName),
+      matchedByExtension: Boolean(snapshot.matchedByExtension),
+      attachmentVisible: Boolean(snapshot.attachmentVisible),
+      nearComposer: Boolean(snapshot.nearComposer),
+      uploadProgressVisible: Boolean(snapshot.uploadProgressVisible),
+      stableDetections: typeof snapshot.stableDetections === "number" ? snapshot.stableDetections : 0,
+      stableDurationMs: typeof snapshot.stableDurationMs === "number" ? snapshot.stableDurationMs : 0,
+      readinessFailures: Array.isArray(snapshot.readinessFailures) ? snapshot.readinessFailures.slice() : [],
+      attachmentElementSummary: snapshot.attachmentElementSummary || null,
+      selectorName: snapshot.selectorName || "fileAttachedIndicator",
+      selectorValue: snapshot.selectorValue || ""
+    };
+  }
+
+  function summarizeComposerReadyToSend(snapshot) {
+    if (!snapshot) {
+      return null;
+    }
+    return {
+      ready: Boolean(snapshot.ready),
+      attachmentReady: Boolean(snapshot.attachmentReady),
+      promptReady: Boolean(snapshot.promptReady),
+      sendButtonReady: Boolean(snapshot.sendButtonReady),
+      promptValueLength: typeof snapshot.promptValueLength === "number" ? snapshot.promptValueLength : 0,
+      expectedPromptLength: typeof snapshot.expectedPromptLength === "number" ? snapshot.expectedPromptLength : 0,
+      uploadProgressVisible: Boolean(snapshot.uploadProgressVisible),
+      attempts: typeof snapshot.attempts === "number" ? snapshot.attempts : 0,
+      elapsedMs: typeof snapshot.elapsedMs === "number" ? snapshot.elapsedMs : 0,
+      readinessFailures: Array.isArray(snapshot.readinessFailures) ? snapshot.readinessFailures.slice() : [],
+      attachmentEvidence: snapshot.attachmentEvidence || null,
+      promptEvidence: snapshot.promptEvidence || null,
+      sendButtonEvidence: snapshot.sendButtonEvidence || null
+    };
+  }
+
+  function inferFailedReadinessCondition(lastWorkflow, attachmentSnapshot, composerSnapshot) {
+    const failedStep = lastWorkflow && lastWorkflow.failedStep ? lastWorkflow.failedStep : "";
+    if (failedStep === "wait_for_attachment_ready" || (attachmentSnapshot && attachmentSnapshot.attachmentReady === false)) {
+      return "attachment_readiness";
+    }
+    if (failedStep === "wait_for_composer_ready_to_send" || composerSnapshot) {
+      if (composerSnapshot && !composerSnapshot.attachmentReady) {
+        return "attachment_readiness";
+      }
+      if (composerSnapshot && !composerSnapshot.promptReady) {
+        return "prompt_readiness";
+      }
+      if (composerSnapshot && !composerSnapshot.sendButtonReady) {
+        return "send_button_readiness";
+      }
+      if (failedStep === "wait_for_composer_ready_to_send") {
+        return "composer_readiness";
+      }
+    }
+    return "";
+  }
+
+  function inferInvolvedArea(lastWorkflow, attachmentSnapshot, composerSnapshot, lastError) {
+    const failedCondition = inferFailedReadinessCondition(lastWorkflow, attachmentSnapshot, composerSnapshot);
+    if (failedCondition === "attachment_readiness") {
+      return "composer_attachment_area";
+    }
+    if (failedCondition === "prompt_readiness") {
+      return "composer_input";
+    }
+    if (failedCondition === "send_button_readiness") {
+      return "composer_send_button";
+    }
+    return lastError && lastError.selectorName ? lastError.selectorName : "";
+  }
+
+  function buildReadinessSummary(lastWorkflow, diagnosticSnapshot) {
+    const attachmentStep = findLatestStepEvidence(diagnosticSnapshot.stepEvidence, "wait_for_attachment_ready");
+    const composerStep = findLatestStepEvidence(diagnosticSnapshot.stepEvidence, "wait_for_composer_ready_to_send");
+    const attachmentSnapshot = summarizeAttachmentReadiness(attachmentStep && attachmentStep.snapshot);
+    const composerSnapshot = summarizeComposerReadyToSend(composerStep && composerStep.snapshot);
+    const failedCondition = inferFailedReadinessCondition(lastWorkflow, attachmentSnapshot, composerSnapshot);
+
+    return {
+      attachmentStep: attachmentStep,
+      composerStep: composerStep,
+      latestAttachmentReadinessSnapshot: attachmentSnapshot,
+      latestComposerReadyToSendSnapshot: composerSnapshot,
+      failedCondition: failedCondition
+    };
+  }
+
   function buildAiDebugSummary(lastWorkflow, errors, diagnosticSnapshot) {
     const lastError = getLastEntry(errors) || (lastWorkflow && lastWorkflow.error) || null;
     const lastRun = getLastEntry(diagnosticSnapshot.workflowRuns) || {};
+    const readinessSummary = buildReadinessSummary(lastWorkflow, diagnosticSnapshot);
     return Contracts.createAiDebugSummary({
       status: lastWorkflow && lastWorkflow.status ? lastWorkflow.status : "idle",
-      probableFailureArea: lastError ? (lastError.selectorName || lastError.workflowStep || lastError.code || "unknown") : "none",
+      probableFailureArea: inferFailureArea(lastError, lastWorkflow, readinessSummary),
       failedStage: lastRun.failedStage || (lastError && lastError.failedStage) || "",
       failedStep: lastWorkflow && lastWorkflow.failedStep ? lastWorkflow.failedStep : "",
       expected: lastError && lastError.expected ? lastError.expected : "",
@@ -104,6 +252,8 @@
     const selectedGatewayFile = options.selectedGatewayFile || null;
     const runtimeStatus = options.runtimeStatus || null;
     const diagnosticSnapshot = options.diagnosticSnapshot || Contracts.createDiagnosticSnapshot();
+    const readinessSummary = buildReadinessSummary(lastWorkflow, diagnosticSnapshot);
+    const lastError = getLastEntry(errors) || (lastWorkflow && lastWorkflow.error) || null;
 
     const rawPackage = {
       generatedAt: new Date().toISOString(),
@@ -128,7 +278,8 @@
         siteId: activeProfile.siteId,
         version: activeProfile.version,
         selectors: activeProfile.selectors,
-        timing: activeProfile.timing
+        timing: activeProfile.timing,
+        behavior: activeProfile.behavior
       },
       workflow: {
         timeline: lastWorkflow && lastWorkflow.timeline ? lastWorkflow.timeline : [],
@@ -139,6 +290,23 @@
       pageStateHistory: pageStateHistory,
       errors: errors,
       telemetryEvents: events,
+      readiness: {
+        latestAttachmentReadinessSnapshot: readinessSummary.latestAttachmentReadinessSnapshot,
+        latestComposerReadyToSendSnapshot: readinessSummary.latestComposerReadyToSendSnapshot,
+        failedCondition: readinessSummary.failedCondition,
+        involvedArea: inferInvolvedArea(lastWorkflow, readinessSummary.latestAttachmentReadinessSnapshot, readinessSummary.latestComposerReadyToSendSnapshot, lastError),
+        failedStage: lastWorkflow && lastWorkflow.failedStage ? lastWorkflow.failedStage : "",
+        failedStep: lastWorkflow && lastWorkflow.failedStep ? lastWorkflow.failedStep : "",
+        errorCode: lastError && lastError.code ? lastError.code : "",
+        likelyOwnerModule: inferOwnerModule(lastError, lastWorkflow),
+        recommendedNextChecks: lastError && Array.isArray(lastError.nextChecks) && lastError.nextChecks.length
+          ? lastError.nextChecks
+          : [],
+        knownReadinessGates: [
+          "wait_for_attachment_ready",
+          "wait_for_composer_ready_to_send"
+        ]
+      },
       evidence: {
         composerSnapshot: getLastEntry(diagnosticSnapshot.runtimeSnapshots),
         visibleButtonsNearComposer: getLastEntry(diagnosticSnapshot.sendButtonEvidence)
@@ -146,6 +314,8 @@
           : [],
         uploadSnapshot: getLastEntry(diagnosticSnapshot.runtimeSnapshots),
         sendButtonSnapshot: getLastEntry(diagnosticSnapshot.sendButtonEvidence) || null,
+        attachmentReadinessStep: readinessSummary.attachmentStep,
+        composerReadyToSendStep: readinessSummary.composerStep,
         expectedVsActualByStep: diagnosticSnapshot.stepEvidence.map(function mapStep(step) {
           return {
             stepName: step.stepName,

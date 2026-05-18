@@ -42,7 +42,11 @@
       chatInputReadyTimeoutMs: 10000,
       fileAttachTimeoutMs: 10000,
       afterFileAttachDelayMs: 1500,
+      attachmentReadyTimeoutMs: 30000,
+      attachmentStablePollCount: 3,
+      attachmentStableMinDurationMs: 750,
       afterPromptInsertDelayMs: 250,
+      composerReadyTimeoutMs: 30000,
       sendButtonReadyTimeoutMs: 5000,
       afterSendClickDelayMs: 600,
       pollIntervalMs: 200
@@ -50,6 +54,9 @@
     behavior: {
       enableHeuristicFallbacks: true,
       requireFileAttachedIndicator: false,
+      requireAttachmentReadyBeforePrompt: true,
+      requireComposerReadyBeforeSend: true,
+      readinessDiagnosticsEnabled: true,
       expectedFileExtensions: [".xls", ".xlsx"]
     },
     upload: {

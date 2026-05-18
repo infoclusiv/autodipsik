@@ -129,7 +129,7 @@
           selectorName: structuredError.selectorName || "",
           selectorValue: structuredError.selector || "",
           elapsedMs: durationMs,
-          snapshot: structuredError.pageSummary || null
+          snapshot: structuredError.snapshot || structuredError.pageSummary || null
         });
 
         await Telemetry.emit({
