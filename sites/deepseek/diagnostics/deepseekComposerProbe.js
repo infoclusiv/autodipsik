@@ -3,6 +3,9 @@
   const Selectors = DeepSeekAutomation.DeepSeekSelectors;
   const DomHelpers = DeepSeekAutomation.DeepSeekDomHelpers;
 
+  const SEND_ICON_PREFIX = "M8.3125 0.981587";
+  const ATTACH_ICON_PREFIX = "M5.5498 9.75V5";
+
   function queryVisibleElement(selector) {
     const elements = Selectors.queryAllSafe(selector);
     return elements.find(Selectors.isElementVisible) || elements[0] || null;
@@ -67,6 +70,13 @@
       && rect.left <= composerRect.right + 120
       && rect.bottom >= composerRect.top - 220
       && rect.top <= composerRect.bottom + 220;
+  }
+
+  function isCandidateOnRightSideOfComposer(rect, composerRect) {
+    if (!rect || !composerRect) {
+      return false;
+    }
+    return rect.left >= composerRect.left + Math.max(0, composerRect.width - 220);
   }
 
   function getVisibleButtonsNearComposer(profile, context) {
@@ -271,141 +281,333 @@
   }
 
   function extractCandidateKeywords(element) {
-    const text = normalizeText(element && (element.innerText || element.textContent || "")).toLowerCase();
-    const ariaLabel = normalizeText(element && element.getAttribute("aria-label")).toLowerCase();
-    const title = normalizeText(element && element.getAttribute("title")).toLowerCase();
+    const text = normalizeText(element && (element.innerText || element.textContent || ""));
+    const ariaLabel = normalizeText(element && element.getAttribute("aria-label"));
+    const title = normalizeText(element && element.getAttribute("title"));
     return {
       text: text,
       ariaLabel: ariaLabel,
       title: title,
-      haystack: [text, ariaLabel, title].join(" ")
+      haystack: [text, ariaLabel, title].join(" ").toLowerCase()
     };
   }
 
-  function getSendButtonDisabledReasonCode(element, profile, uploadProgressVisible) {
+  function getSvgPathSignature(element) {
+    if (!element || typeof element.querySelectorAll !== "function") {
+      return [];
+    }
+    return Array.from(element.querySelectorAll("svg path"))
+      .map(function mapPath(path) {
+        return normalizeText(path.getAttribute("d"));
+      })
+      .filter(Boolean);
+  }
+
+  function hasSvgPathStartingWith(element, prefix) {
+    if (!prefix) {
+      return false;
+    }
+    return getSvgPathSignature(element).some(function matches(pathD) {
+      return pathD.startsWith(prefix);
+    });
+  }
+
+  function isArrowUpSendPath(pathD) {
+    return Boolean(pathD) && (
+      pathD.includes(SEND_ICON_PREFIX)
+      || (pathD.includes("M8.3125") && pathD.includes("L14.707") && pathD.includes("V15.0431"))
+    );
+  }
+
+  function isPaperclipAttachPath(pathD) {
+    return Boolean(pathD) && (
+      pathD.includes(ATTACH_ICON_PREFIX)
+      || (pathD.includes("M5.5498") && pathD.includes("V5") && pathD.includes("9.75"))
+    );
+  }
+
+  function isArrowUpSendIcon(element) {
+    return getSvgPathSignature(element).some(isArrowUpSendPath);
+  }
+
+  function isPaperclipAttachIcon(element) {
+    return getSvgPathSignature(element).some(isPaperclipAttachPath);
+  }
+
+  function getSvgSignature(element) {
+    const paths = getSvgPathSignature(element);
+    if (paths.some(isArrowUpSendPath)) {
+      return "arrow_up_send";
+    }
+    if (paths.some(isPaperclipAttachPath)) {
+      return "paperclip_attach";
+    }
+    return paths.length ? "unknown" : "none";
+  }
+
+  function getCandidateIdentity(element, svgSignature, keywords) {
+    const tagName = String(element && element.tagName || "").toLowerCase();
+    const role = String(element && element.getAttribute && element.getAttribute("role") || "").toLowerCase();
+    const className = normalizeText(String(element && element.className || ""))
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean)
+      .filter(function keep(token) {
+        return token.indexOf("ds-icon-button") >= 0 || token === "disabled";
+      })
+      .join(".");
+    const text = normalizeText(keywords && keywords.text || "").toLowerCase();
+    return [tagName, role, svgSignature, className || "no-class", text || "no-text"].join("|");
+  }
+
+  function getDisabledSignals(element, profile, uploadProgressVisible) {
+    const signals = [];
     if (!element) {
-      return "no_send_candidate_found";
+      signals.push("missing_candidate");
+      return signals;
     }
-    if (element.disabled) {
-      return "candidate_disabled_property";
+
+    const className = String(element.className || "").toLowerCase();
+    const ariaDisabled = String(element.getAttribute("aria-disabled") || "").toLowerCase();
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+
+    if (element.disabled === true) {
+      signals.push("disabled_property_true");
     }
-    if (String(element.getAttribute("aria-disabled") || "").toLowerCase() === "true") {
-      return "candidate_aria_disabled";
+    if (element.hasAttribute("disabled")) {
+      signals.push("has_disabled_attribute");
     }
-    if (String(element.className || "").toLowerCase().includes("disabled")) {
-      return "candidate_has_disabled_class";
+    if (ariaDisabled === "true") {
+      signals.push("aria_disabled_true");
     }
-    if (String(element.className || "").toLowerCase().includes("loading") || String(element.getAttribute("aria-busy") || "").toLowerCase() === "true") {
-      return "candidate_loading";
+    if (className.includes("ds-icon-button--disabled")) {
+      signals.push("class_contains_ds_icon_button_disabled");
+    }
+    if (!className.includes("ds-icon-button--disabled") && className.includes("disabled")) {
+      signals.push("class_contains_disabled");
+    }
+    if (String(element.getAttribute("aria-busy") || "").toLowerCase() === "true") {
+      signals.push("aria_busy_true");
+    }
+    if (className.includes("loading")) {
+      signals.push("class_contains_loading");
     }
     if (uploadProgressVisible) {
-      return "upload_progress_visible";
+      signals.push("upload_progress_visible");
     }
     try {
       if (profile.selectors.sendButtonDisabledIndicator && element.matches(profile.selectors.sendButtonDisabledIndicator)) {
-        return "profile_disabled_indicator";
+        signals.push("profile_disabled_indicator");
       }
     } catch (error) {
-      return "disabled_indicator_selector_error";
+      signals.push("disabled_indicator_selector_error");
+    }
+    if (style.display === "none") {
+      signals.push("display_none");
+    }
+    if (style.visibility === "hidden") {
+      signals.push("visibility_hidden");
+    }
+    if (rect.width <= 0 || rect.height <= 0) {
+      signals.push("zero_sized");
+    }
+    if (style.opacity === "0.4") {
+      signals.push("opacity_0_4");
     }
     if (!Selectors.isElementClickable(element)) {
-      return "candidate_not_clickable";
+      signals.push("not_clickable");
     }
-    return "";
+    return signals;
+  }
+
+  function getPrimaryDisabledReason(disabledSignals) {
+    return Array.isArray(disabledSignals) && disabledSignals.length ? disabledSignals[0] : "";
+  }
+
+  function getButtonLikeCandidatesNearComposer(profile, context) {
+    const composerRect = getComposerRect(profile, context);
+    const seen = new Set();
+    return Array.from(document.querySelectorAll("[role='button'], button"))
+      .map(function resolveCandidate(element) {
+        const buttonLikeParent = element.closest("[role='button'], button");
+        return buttonLikeParent || element;
+      })
+      .filter(function keep(element) {
+        if (!element || seen.has(element)) {
+          return false;
+        }
+        seen.add(element);
+        if (!Selectors.isElementVisible(element)) {
+          return false;
+        }
+        return isElementNearComposerRect(element.getBoundingClientRect(), composerRect);
+      });
+  }
+
+  function inspectSendButtonCandidate(element, profile, composerRect, uploadProgressVisible) {
+    const rect = element.getBoundingClientRect();
+    const keywords = extractCandidateKeywords(element);
+    const type = String(element.getAttribute("type") || "").toLowerCase();
+    const svgDetectionEnabled = !(profile && profile.behavior && profile.behavior.enableSvgSendButtonDetection === false);
+    const matchesProfileSelector = (function checkProfileSelector() {
+      try {
+        return Boolean(profile.selectors.sendButton && element.matches(profile.selectors.sendButton));
+      } catch (error) {
+        return false;
+      }
+    })();
+    const svgSignature = svgDetectionEnabled ? getSvgSignature(element) : "none";
+    const selectionReasons = [];
+    const rejectionReasons = [];
+    let candidateRole = "unknown";
+    let selectionScore = 0;
+
+    if (/deepthink|search/.test(keywords.haystack)) {
+      candidateRole = "known_non_send";
+      rejectionReasons.push("known_non_send_control");
+    } else if (svgSignature === "paperclip_attach" || /attach|upload|paperclip|file/.test(keywords.haystack)) {
+      candidateRole = "attach";
+      rejectionReasons.push(svgSignature === "paperclip_attach" ? "paperclip_attach_svg" : "attachment_control");
+    } else if ((svgDetectionEnabled && svgSignature === "arrow_up_send") || type === "submit" || /send/.test(keywords.haystack) || matchesProfileSelector) {
+      candidateRole = "send";
+    }
+
+    if (matchesProfileSelector) {
+      selectionScore += 100;
+      selectionReasons.push("matches_profile_selector");
+    }
+    if (type === "submit") {
+      selectionScore += 40;
+      selectionReasons.push("submit_type");
+    }
+    if (/send/.test(keywords.haystack)) {
+      selectionScore += 35;
+      selectionReasons.push("send_keyword");
+    }
+    if (svgSignature === "arrow_up_send") {
+      selectionScore += 120;
+      selectionReasons.push("arrow_up_svg");
+    }
+    if (svgSignature === "paperclip_attach") {
+      selectionScore -= 120;
+    }
+    if (element.tagName === "BUTTON") {
+      selectionScore += 10;
+    }
+    if (String(element.getAttribute("role") || "").toLowerCase() === "button") {
+      selectionScore += 5;
+    }
+    if (isCandidateOnRightSideOfComposer(rect, composerRect)) {
+      selectionScore += 15;
+      selectionReasons.push("right_side_of_composer");
+    }
+    if (String(element.className || "").toLowerCase().includes("ds-icon-button")) {
+      selectionScore += 10;
+      selectionReasons.push("ds_icon_button_class");
+    }
+    if (!isElementNearComposerRect(rect, composerRect)) {
+      rejectionReasons.push("not_near_composer");
+    } else {
+      selectionReasons.push("near_composer");
+    }
+
+    if (candidateRole !== "send" && rejectionReasons.length === 0) {
+      rejectionReasons.push("not_classified_as_send");
+    }
+
+    const disabledSignals = getDisabledSignals(element, profile, uploadProgressVisible);
+    const candidateIdentity = getCandidateIdentity(element, svgSignature, keywords);
+    const elementSummary = DomHelpers.getElementSummary(element);
+
+    return {
+      element: element,
+      candidateIdentity: candidateIdentity,
+      candidateRole: candidateRole,
+      svgSignature: svgSignature,
+      selectionScore: selectionScore,
+      selectionReasons: selectionReasons,
+      rejectionReasons: rejectionReasons,
+      disabledSignals: disabledSignals,
+      disabledReason: getPrimaryDisabledReason(disabledSignals),
+      matchesProfileSelector: matchesProfileSelector,
+      keywords: keywords,
+      rightSideOfComposer: isCandidateOnRightSideOfComposer(rect, composerRect),
+      elementSummary: elementSummary
+    };
+  }
+
+  function summarizeSendCandidate(candidate) {
+    if (!candidate) {
+      return null;
+    }
+    return {
+      summary: candidate.elementSummary,
+      candidateIdentity: candidate.candidateIdentity,
+      svgSignature: candidate.svgSignature,
+      candidateRole: candidate.candidateRole,
+      selectionScore: candidate.selectionScore,
+      selectionReasons: candidate.selectionReasons.slice(),
+      rejectionReasons: candidate.rejectionReasons.slice(),
+      disabledSignals: candidate.disabledSignals.slice()
+    };
   }
 
   function probeSendButtonState(profile, workflowInput, context) {
     const composerRect = getComposerRect(profile, context);
     const uploadProgressVisible = isUploadProgressVisibleNearComposer(profile, context);
-    const rawCandidates = Array.from(document.querySelectorAll("[role='button'], button"))
-      .filter(function onlyVisibleNearComposer(element) {
-        return Boolean(Selectors.isElementVisible(element) && isElementNearComposerRect(element.getBoundingClientRect(), composerRect));
-      })
-      .map(function inspectCandidate(element) {
-        const rect = element.getBoundingClientRect();
-        const keywords = extractCandidateKeywords(element);
-        const type = String(element.getAttribute("type") || "").toLowerCase();
-        const matchesProfileSelector = (function checkProfileSelector() {
-          try {
-            return Boolean(profile.selectors.sendButton && element.matches(profile.selectors.sendButton));
-          } catch (error) {
-            return false;
-          }
-        })();
-        const rejectionReasons = [];
-        let score = 0;
-
-        if (/deepthink|search/.test(keywords.haystack)) {
-          rejectionReasons.push("known_non_send_control");
-        }
-        if (/attach|upload|paperclip|file/.test(keywords.haystack)) {
-          rejectionReasons.push("attachment_control");
-        }
-        if (type === "submit") {
-          score += 40;
-        }
-        if (/send/.test(keywords.haystack)) {
-          score += 35;
-        }
-        if (matchesProfileSelector) {
-          score += 100;
-        }
-        if (element.tagName === "BUTTON") {
-          score += 10;
-        }
-        if (composerRect && rect.x > composerRect.x + Math.max(0, composerRect.width - 180)) {
-          score += 10;
-        }
-
-        const disabledReason = getSendButtonDisabledReasonCode(element, profile, uploadProgressVisible);
-        return {
-          element: element,
-          score: score,
-          matchesProfileSelector: matchesProfileSelector,
-          rejectionReasons: rejectionReasons,
-          disabledReason: disabledReason,
-          elementSummary: DomHelpers.getElementSummary(element)
-        };
+    const inspectedCandidates = getButtonLikeCandidatesNearComposer(profile, context)
+      .map(function inspect(element) {
+        return inspectSendButtonCandidate(element, profile, composerRect, uploadProgressVisible);
       })
       .sort(function sortCandidates(left, right) {
-        return right.score - left.score;
+        return right.selectionScore - left.selectionScore;
       });
 
-    const acceptedCandidates = rawCandidates.filter(function filterAccepted(candidate) {
-      return candidate.rejectionReasons.length === 0 && candidate.score >= 35;
+    const acceptedCandidates = inspectedCandidates.filter(function filterAccepted(candidate) {
+      return candidate.candidateRole === "send" && candidate.rejectionReasons.length === 0;
     });
     const selectedCandidate = acceptedCandidates[0] || null;
-    const topRejectedProfileCandidate = rawCandidates.find(function findRejected(candidate) {
-      return candidate.matchesProfileSelector && candidate.rejectionReasons.length;
-    }) || null;
     const sendButtonCandidateFound = Boolean(selectedCandidate);
-    const disabledReason = selectedCandidate ? selectedCandidate.disabledReason : (topRejectedProfileCandidate ? "only_non_send_controls_visible" : "no_send_candidate_found");
-    const sendButtonReady = Boolean(sendButtonCandidateFound && !disabledReason);
-    const wrongCandidateLikely = Boolean(!selectedCandidate && topRejectedProfileCandidate);
+    const disabledReason = selectedCandidate ? selectedCandidate.disabledReason : "no_send_candidate_found";
+    const sendButtonReady = Boolean(sendButtonCandidateFound && selectedCandidate.disabledSignals.length === 0);
+    const likelyWrongCandidate = inspectedCandidates.find(function findWrongCandidate(candidate) {
+      return (candidate.candidateRole === "attach" || candidate.candidateRole === "known_non_send")
+        && candidate.rightSideOfComposer
+        && candidate.selectionScore >= 0;
+    }) || null;
 
     return {
       sendButtonCandidateFound: sendButtonCandidateFound,
       sendButtonReady: sendButtonReady,
       disabledReason: disabledReason,
-      wrongCandidateLikely: wrongCandidateLikely,
+      disabledSignals: selectedCandidate ? selectedCandidate.disabledSignals.slice() : [],
+      wrongCandidateLikely: Boolean(!selectedCandidate && likelyWrongCandidate),
+      wrongCandidateEvidence: likelyWrongCandidate ? summarizeSendCandidate(likelyWrongCandidate) : null,
+      selectedCandidateReason: selectedCandidate
+        ? selectedCandidate.selectionReasons.join("_")
+        : "",
       selectedCandidate: selectedCandidate ? Object.assign({}, selectedCandidate.elementSummary, {
-        foundBy: selectedCandidate.matchesProfileSelector ? "profile-selector" : "heuristic",
-        score: selectedCandidate.score
+        candidateIdentity: selectedCandidate.candidateIdentity,
+        candidateRole: selectedCandidate.candidateRole,
+        svgSignature: selectedCandidate.svgSignature,
+        selectionScore: selectedCandidate.selectionScore,
+        selectionReasons: selectedCandidate.selectionReasons.slice(),
+        disabledSignals: selectedCandidate.disabledSignals.slice(),
+        foundBy: selectedCandidate.matchesProfileSelector ? "profile-selector+heuristic" : "heuristic"
       }) : null,
-      rejectedCandidates: rawCandidates
+      candidateSummaries: inspectedCandidates.slice(0, 8).map(summarizeSendCandidate),
+      rejectedCandidates: inspectedCandidates
         .filter(function filterRejected(candidate) {
           return candidate.rejectionReasons.length > 0;
         })
         .slice(0, 8)
-        .map(function mapRejected(candidate) {
-          return {
-            summary: candidate.elementSummary,
-            reasons: candidate.rejectionReasons.slice()
-          };
-        }),
+        .map(summarizeSendCandidate),
       visibleButtonsNearComposer: getVisibleButtonsNearComposer(profile, context),
       uploadProgressVisible: uploadProgressVisible,
-      foundBy: selectedCandidate ? (selectedCandidate.matchesProfileSelector ? "profile-selector" : "heuristic") : "none",
+      foundBy: selectedCandidate
+        ? (selectedCandidate.matchesProfileSelector ? "profile-selector+heuristic" : "heuristic")
+        : "none",
       element: selectedCandidate ? selectedCandidate.element : null
     };
   }
@@ -475,6 +677,10 @@
 
   DeepSeekAutomation.DeepSeekComposerProbe = {
     getVisibleButtonsNearComposer: getVisibleButtonsNearComposer,
+    getSvgPathSignature: getSvgPathSignature,
+    hasSvgPathStartingWith: hasSvgPathStartingWith,
+    isArrowUpSendIcon: isArrowUpSendIcon,
+    isPaperclipAttachIcon: isPaperclipAttachIcon,
     probeAttachmentState: probeAttachmentState,
     probePromptState: probePromptState,
     probeSendButtonState: probeSendButtonState,

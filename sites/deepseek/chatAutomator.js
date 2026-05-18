@@ -641,6 +641,9 @@
         const liveSendButtonEvidence = buildSendButtonReadyEvidence(profile, workflowInput, context);
         context.sendButton = liveSendButtonEvidence.element;
         context.sendButtonEvidence = Object.assign({}, liveSendButtonEvidence, { element: undefined });
+        context.sendButtonCandidateIdentity = liveSendButtonEvidence.selectedCandidate
+          ? liveSendButtonEvidence.selectedCandidate.candidateIdentity || ""
+          : "";
         return {
           ready: true,
           foundBy: liveSendButtonEvidence.foundBy,
@@ -1047,6 +1050,44 @@
             };
           }
 
+          const liveSendButtonEvidence = buildSendButtonReadyEvidence(profile, workflowInput, context);
+          const liveCandidateIdentity = liveSendButtonEvidence.selectedCandidate
+            ? liveSendButtonEvidence.selectedCandidate.candidateIdentity || ""
+            : "";
+          const storedCandidateIdentity = context.sendButtonCandidateIdentity || "";
+
+          if (!liveSendButtonEvidence.sendButtonCandidateFound || !liveSendButtonEvidence.sendButtonReady || !liveSendButtonEvidence.element) {
+            throw buildWorkflowError("SEND_BUTTON_NOT_READY_AT_CLICK", "The selected send button was no longer ready at click time.", {
+              profile: profile,
+              failedStage: "submit",
+              expected: "The same send button selected by the ready gate should still be present and enabled before click.",
+              actual: liveSendButtonEvidence.sendButtonCandidateFound
+                ? "A send-button candidate still exists, but it is no longer ready."
+                : "No valid send-button candidate could be re-resolved before click.",
+              selectorName: "sendButton",
+              selector: profile.selectors.sendButton,
+              snapshot: Object.assign({}, liveSendButtonEvidence, { element: undefined })
+            });
+          }
+
+          if (storedCandidateIdentity && liveCandidateIdentity && storedCandidateIdentity !== liveCandidateIdentity) {
+            throw buildWorkflowError("SEND_BUTTON_CANDIDATE_CHANGED", "The send-button candidate changed after the ready gate passed.", {
+              profile: profile,
+              failedStage: "submit",
+              expected: "The click step should target the same logical send-button candidate selected by the ready gate.",
+              actual: "The re-resolved send-button candidate no longer matched the candidate identity captured at readiness time.",
+              selectorName: "sendButton",
+              selector: profile.selectors.sendButton,
+              snapshot: {
+                expectedCandidateIdentity: storedCandidateIdentity,
+                actualCandidateIdentity: liveCandidateIdentity,
+                liveSendButtonEvidence: Object.assign({}, liveSendButtonEvidence, { element: undefined })
+              }
+            });
+          }
+
+          context.sendButton = liveSendButtonEvidence.element;
+          context.sendButtonEvidence = Object.assign({}, liveSendButtonEvidence, { element: undefined });
           const beforeClickSnapshot = DomHelpers.getElementSummary(context.sendButton);
           const preClickProbe = ComposerProbe.probeComposerReadyToSend(profile, workflowInput, context);
           await DiagnosticStore.recordGateSnapshot({
@@ -1064,6 +1105,7 @@
             snapshot: {
               clickSendExecuted: false,
               selectedCandidate: context.sendButtonEvidence && context.sendButtonEvidence.selectedCandidate ? context.sendButtonEvidence.selectedCandidate : null,
+              selectedCandidateReason: context.sendButtonEvidence && context.sendButtonEvidence.selectedCandidateReason ? context.sendButtonEvidence.selectedCandidateReason : "",
               preClickComposerProbe: preClickProbe
             }
           });
@@ -1101,7 +1143,7 @@
             blockingCondition: "",
             snapshot: {
               clickSendExecuted: true,
-              clickedCandidateSummary: context.sendButtonEvidence && context.sendButtonEvidence.selectedCandidate ? context.sendButtonEvidence.selectedCandidate : beforeClickSnapshot,
+              clickedCandidate: context.sendButtonEvidence && context.sendButtonEvidence.selectedCandidate ? context.sendButtonEvidence.selectedCandidate : beforeClickSnapshot,
               beforeClick: beforeClickSnapshot,
               afterClick: DomHelpers.getElementSummary(context.sendButton)
             }
@@ -1112,6 +1154,7 @@
             selectorName: "sendButton",
             selectorValue: profile.selectors.sendButton,
             snapshot: {
+              clickedCandidate: context.sendButtonEvidence && context.sendButtonEvidence.selectedCandidate ? context.sendButtonEvidence.selectedCandidate : beforeClickSnapshot,
               beforeClick: beforeClickSnapshot,
               afterClick: DomHelpers.getElementSummary(context.sendButton)
             },

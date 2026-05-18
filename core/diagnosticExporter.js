@@ -278,6 +278,8 @@
       "- sendButtonCandidateFound: " + String(Boolean(evidence.latestComposerGate && evidence.latestComposerGate.sendButtonEvidence && evidence.latestComposerGate.sendButtonEvidence.sendButtonCandidateFound)),
       "- sendButtonReady: " + String(Boolean(evidence.latestComposerGate && evidence.latestComposerGate.sendButtonReady)),
       "- disabledReason: " + (((evidence.latestComposerGate && evidence.latestComposerGate.sendButtonEvidence && evidence.latestComposerGate.sendButtonEvidence.disabledReason) || "none")),
+      "- selectedCandidateReason: " + (((evidence.latestComposerGate && evidence.latestComposerGate.sendButtonEvidence && evidence.latestComposerGate.sendButtonEvidence.selectedCandidateReason) || "none")),
+      "- selectedCandidateSvg: " + (((evidence.latestComposerGate && evidence.latestComposerGate.sendButtonEvidence && evidence.latestComposerGate.sendButtonEvidence.selectedCandidate && evidence.latestComposerGate.sendButtonEvidence.selectedCandidate.svgSignature) || "none")),
       "- clickSendExecuted: " + String(Boolean(evidence.clickSendStep && evidence.clickSendStep.status === "completed")),
       "",
       "## Missing Evidence",

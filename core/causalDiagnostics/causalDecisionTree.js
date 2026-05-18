@@ -180,6 +180,8 @@
       if (composerSnapshot) {
         const sendEvidence = composerSnapshot.sendButtonEvidence || {};
         const disabledReason = sendEvidence.disabledReason || "";
+        const selectedCandidate = sendEvidence.selectedCandidate || {};
+        const wrongCandidateEvidence = sendEvidence.wrongCandidateEvidence || null;
 
         if (!composerSnapshot.promptReady) {
           return CausalContracts.createCausalVerdict(Object.assign({}, base, {
@@ -192,13 +194,17 @@
           }));
         }
 
-        if (sendEvidence.wrongCandidateLikely) {
+        if (sendEvidence.wrongCandidateLikely || selectedCandidate.svgSignature === "paperclip_attach") {
           return CausalContracts.createCausalVerdict(Object.assign({}, base, {
             status: "exact",
             causalCode: "WRONG_SEND_BUTTON_CANDIDATE",
             exactKnownCause: "The likely selected send-button candidate appears to be a non-send control.",
             blockedAt: "wait_for_composer_ready_to_send",
             blockingCondition: composerSnapshot.blockingCondition || "wrongSendCandidate",
+            evidence: Object.assign({}, base.evidence, {
+              sendButtonEvidence: sendEvidence,
+              wrongCandidateEvidence: wrongCandidateEvidence
+            }),
             nextBestAction: "Refine the send-button candidate heuristics to reject the wrong control."
           }));
         }

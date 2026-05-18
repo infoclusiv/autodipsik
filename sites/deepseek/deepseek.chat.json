@@ -15,7 +15,7 @@
   "selectors": {
     "fileInput": "input[type='file']",
     "composer": "textarea, div[contenteditable='true']",
-    "sendButton": "button[type='submit'], button[aria-label*='Send' i]",
+    "sendButton": "button[type='submit'], button[aria-label*='Send' i], [role='button'].ds-icon-button, .ds-icon-button[role='button']",
     "attachmentButton": "button[aria-label*='Attach' i], button[aria-label*='Upload' i], label[for]"
   },
   "upload": {
