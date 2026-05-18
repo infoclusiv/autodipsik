@@ -32,6 +32,9 @@
     return {
       workflowRuns: [],
       stepEvidence: [],
+      causalEvidence: [],
+      gateSnapshots: [],
+      causalReports: [],
       runtimeSnapshots: [],
       gatewaySnapshots: [],
       contentScriptHealth: [],
@@ -79,7 +82,9 @@
       gatewayLikelyInvolved: Boolean(source.gatewayLikelyInvolved),
       recommendedNextChecks: Array.isArray(source.recommendedNextChecks) ? source.recommendedNextChecks.slice() : [],
       traceId: source.traceId || "",
-      workflowId: source.workflowId || ""
+      workflowId: source.workflowId || "",
+      legacy: typeof source.legacy === "boolean" ? source.legacy : false,
+      source: source.source || ""
     };
   }
 

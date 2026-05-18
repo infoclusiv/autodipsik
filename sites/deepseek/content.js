@@ -229,12 +229,18 @@
 
     await DiagnosticStore.setLastWorkflow({
       workflowId: result.workflowId,
+      workflowName: result.workflowName || (message.input && message.input.dryRun ? "deepseek_dry_run" : "deepseek_excel_chat"),
+      runKind: result.workflowName ? (result.workflowName.indexOf("dry_run") >= 0 ? "dry_run" : "actual") : ((message.input && message.input.dryRun) ? "dry_run" : "actual"),
       traceId: result.traceId,
       failedStep: result.failedStep || "",
       failedStage: result.failedStage || "",
       status: result.status,
       startedAt: result.timeline && result.timeline[0] ? result.timeline[0].startedAt : new Date().toISOString(),
       finishedAt: new Date().toISOString(),
+      lastCompletedStep: result.timeline && result.timeline.length
+        ? (result.timeline.filter(function onlyCompleted(step) { return step.status === "completed"; }).slice(-1)[0] || {}).stepName || ""
+        : "",
+      currentStep: result.failedStep || ((result.timeline && result.timeline.length) ? result.timeline[result.timeline.length - 1].stepName || "" : ""),
       timeline: result.timeline || [],
       error: result.error || null,
       diagnosticPackage: result.diagnosticPackage || null

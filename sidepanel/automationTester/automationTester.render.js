@@ -55,7 +55,7 @@
       "<div class='button-row'>",
       "<button id='automation-select-file'>Select Excel File</button>",
       "<button class='primary' id='run-automation'>Run automation</button>",
-      "<button id='automation-export-diagnostics'>Export diagnostic</button>",
+      "<button id='automation-export-causal-report'>Export Causal Report</button>",
       "</div>",
       "</div>",
       "<div class='card'>",

@@ -3,6 +3,7 @@
   const Telemetry = NewSiteCore.Telemetry;
   const TELEMETRY_EVENTS = NewSiteCore.TELEMETRY_EVENTS;
   const Errors = NewSiteCore.Errors;
+  const WorkflowStateTracker = NewSiteCore.WorkflowStateTracker;
 
   async function runWorkflow(options) {
     const DiagnosticStore = NewSiteCore.DiagnosticStore;
@@ -21,6 +22,17 @@
       results: {},
       timeline: []
     };
+    const knownStepOrder = steps.map(function mapStep(step) {
+      return step.name;
+    });
+
+    await DiagnosticStore.recordWorkflowStarted({
+      traceId: traceId,
+      workflowId: workflowId,
+      workflowName: workflowName,
+      runKind: WorkflowStateTracker.inferRunKind(workflowName),
+      nextExpectedStep: knownStepOrder[0] || ""
+    });
 
     await Telemetry.emit({
       eventName: TELEMETRY_EVENTS.WORKFLOW_STARTED,
@@ -38,6 +50,13 @@
       const startedTime = Date.now();
       context.currentStep = step.name;
       context.currentStage = step.stage || "workflow";
+      await DiagnosticStore.recordWorkflowStepStarted({
+        traceId: traceId,
+        workflowId: workflowId,
+        stepName: step.name,
+        stage: context.currentStage,
+        nextExpectedStep: WorkflowStateTracker.inferNextExpectedStep(step.name, knownStepOrder)
+      });
       await Telemetry.emit({
         eventName: TELEMETRY_EVENTS.WORKFLOW_STEP_STARTED,
         traceId: traceId,
@@ -80,6 +99,13 @@
           foundBy: result && result.foundBy ? result.foundBy : "",
           elapsedMs: durationMs,
           snapshot: result && result.snapshot ? result.snapshot : null
+        });
+        await DiagnosticStore.recordWorkflowStepCompleted({
+          traceId: traceId,
+          workflowId: workflowId,
+          stepName: step.name,
+          stage: context.currentStage,
+          nextExpectedStep: WorkflowStateTracker.inferNextExpectedStep(step.name, knownStepOrder)
         });
 
         await Telemetry.emit({
@@ -131,6 +157,12 @@
           elapsedMs: durationMs,
           snapshot: structuredError.snapshot || structuredError.pageSummary || null
         });
+        await DiagnosticStore.recordWorkflowStepFailed({
+          traceId: traceId,
+          workflowId: workflowId,
+          stepName: step.name,
+          failedStage: context.currentStage
+        });
 
         await Telemetry.emit({
           eventName: TELEMETRY_EVENTS.WORKFLOW_STEP_FAILED,
@@ -169,6 +201,7 @@
           status: "failed",
           traceId: traceId,
           workflowId: workflowId,
+          workflowName: workflowName,
           failedStep: step.name,
           failedStage: context.currentStage,
           timeline: context.timeline,
@@ -187,11 +220,17 @@
       level: "info",
       message: "Workflow completed"
     });
+    await DiagnosticStore.recordWorkflowCompleted({
+      traceId: traceId,
+      workflowId: workflowId,
+      currentStep: steps.length ? steps[steps.length - 1].name : ""
+    });
 
     return {
       status: "completed",
       traceId: traceId,
       workflowId: workflowId,
+      workflowName: workflowName,
       timeline: context.timeline,
       results: context.results,
       error: null

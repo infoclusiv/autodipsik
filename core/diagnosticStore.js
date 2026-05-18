@@ -5,6 +5,8 @@
   const STORAGE_KEYS = NewSiteCore.STORAGE_KEYS;
   const EXTENSION_CONFIG = NewSiteCore.EXTENSION_CONFIG;
   const Contracts = NewSiteCore.ObservabilityContracts;
+  const CausalContracts = NewSiteCore.CausalContracts;
+  const WorkflowStateTracker = NewSiteCore.WorkflowStateTracker;
   const DiagnosticExporter = NewSiteCore.DiagnosticExporter;
 
   async function appendLimited(key, item, limit) {
@@ -48,6 +50,18 @@
     return appendSnapshotList("stepEvidence", Contracts.createStepEvidence(entry), 200);
   }
 
+  async function recordCausalEvidence(entry) {
+    return appendSnapshotList("causalEvidence", CausalContracts.createCausalEvidence(entry), 200);
+  }
+
+  async function recordGateSnapshot(entry) {
+    return appendSnapshotList("gateSnapshots", CausalContracts.createCausalEvidence(entry), 200);
+  }
+
+  async function recordCausalReport(entry) {
+    return appendSnapshotList("causalReports", CausalContracts.createCausalVerdict(entry), 20);
+  }
+
   async function recordRuntimeSnapshot(entry) {
     return appendSnapshotList("runtimeSnapshots", entry, 50);
   }
@@ -64,9 +78,88 @@
     return appendSnapshotList("sendButtonEvidence", entry, 50);
   }
 
+  async function upsertWorkflowRun(nextRun) {
+    const snapshot = await getDiagnosticSnapshot();
+    const workflowRuns = Array.isArray(snapshot.workflowRuns) ? snapshot.workflowRuns.slice() : [];
+    const index = workflowRuns.findIndex(function findRun(run) {
+      return run && run.workflowId === nextRun.workflowId;
+    });
+
+    if (index >= 0) {
+      workflowRuns[index] = nextRun;
+    } else {
+      workflowRuns.push(nextRun);
+    }
+
+    snapshot.workflowRuns = workflowRuns.slice(-20);
+    await persistDiagnosticSnapshot(snapshot);
+    return nextRun;
+  }
+
+  async function findWorkflowRun(workflowId) {
+    const snapshot = await getDiagnosticSnapshot();
+    const workflowRuns = Array.isArray(snapshot.workflowRuns) ? snapshot.workflowRuns : [];
+    return workflowRuns.find(function matchRun(run) {
+      return run && run.workflowId === workflowId;
+    }) || null;
+  }
+
+  async function recordWorkflowStarted(entry) {
+    return upsertWorkflowRun(WorkflowStateTracker.recordWorkflowStarted(entry));
+  }
+
+  async function recordWorkflowStepStarted(entry) {
+    const existing = await findWorkflowRun(entry.workflowId);
+    return upsertWorkflowRun(WorkflowStateTracker.recordWorkflowStepStarted(existing, entry));
+  }
+
+  async function recordWorkflowStepCompleted(entry) {
+    const existing = await findWorkflowRun(entry.workflowId);
+    return upsertWorkflowRun(WorkflowStateTracker.recordWorkflowStepCompleted(existing, entry));
+  }
+
+  async function recordWorkflowStepFailed(entry) {
+    const existing = await findWorkflowRun(entry.workflowId);
+    return upsertWorkflowRun(WorkflowStateTracker.recordWorkflowStepFailed(existing, entry));
+  }
+
+  async function recordWorkflowCompleted(entry) {
+    const existing = await findWorkflowRun(entry.workflowId);
+    return upsertWorkflowRun(WorkflowStateTracker.recordWorkflowCompleted(existing, entry));
+  }
+
+  async function getLatestGateSnapshot(workflowId, gateName) {
+    const snapshot = await getDiagnosticSnapshot();
+    const gateSnapshots = Array.isArray(snapshot.gateSnapshots) ? snapshot.gateSnapshots : [];
+    for (let index = gateSnapshots.length - 1; index >= 0; index -= 1) {
+      const entry = gateSnapshots[index];
+      if (entry && entry.workflowId === workflowId && entry.gateName === gateName) {
+        return entry;
+      }
+    }
+    return null;
+  }
+
   async function setLastWorkflow(workflow) {
     await Storage.setValue(STORAGE_KEYS.LAST_WORKFLOW, workflow);
-    await appendSnapshotList("workflowRuns", workflow, 20);
+    const existing = await findWorkflowRun(workflow.workflowId);
+    const merged = WorkflowStateTracker.createWorkflowRunState(Object.assign({}, existing || {}, workflow, {
+      workflowId: workflow.workflowId,
+      workflowName: workflow.workflowName || (existing && existing.workflowName) || "",
+      traceId: workflow.traceId,
+      runKind: workflow.runKind || (existing && existing.runKind) || WorkflowStateTracker.inferRunKind(workflow.workflowName || (existing && existing.workflowName) || ""),
+      status: workflow.status || (existing && existing.status) || "unknown",
+      startedAt: workflow.startedAt || (existing && existing.startedAt) || "",
+      lastUpdatedAt: workflow.finishedAt || workflow.lastUpdatedAt || new Date().toISOString(),
+      lastCompletedStep: workflow.lastCompletedStep || (existing && existing.lastCompletedStep) || "",
+      currentStep: workflow.failedStep || workflow.currentStep || (existing && existing.currentStep) || "",
+      nextExpectedStep: workflow.nextExpectedStep || "",
+      terminal: typeof workflow.terminal === "boolean" ? workflow.terminal : Boolean(workflow.finishedAt || workflow.status === "completed" || workflow.status === "failed"),
+      failedStep: workflow.failedStep || "",
+      failedStage: workflow.failedStage || "",
+      timeline: workflow.timeline || (existing && existing.timeline) || []
+    }));
+    await upsertWorkflowRun(merged);
   }
 
   async function exportDiagnostics(activeProfile, siteConfig, extra) {
@@ -81,7 +174,7 @@
     const runtimeStatus = await Storage.getValue(STORAGE_KEYS.RUNTIME_STATUS, null);
     const diagnosticSnapshot = await getDiagnosticSnapshot();
 
-    return DiagnosticExporter.exportDiagnostics({
+    const diagnostics = DiagnosticExporter.exportDiagnostics({
       manifest: manifest,
       extensionConfig: EXTENSION_CONFIG,
       activeProfile: activeProfile,
@@ -97,6 +190,10 @@
       diagnosticSnapshot: diagnosticSnapshot,
       extra: extra || {}
     });
+    if (diagnostics && diagnostics.causalReport) {
+      await recordCausalReport(diagnostics.causalReport);
+    }
+    return diagnostics;
   }
 
   NewSiteCore.DiagnosticStore = {
@@ -104,10 +201,19 @@
     recordPageState: recordPageState,
     recordError: recordError,
     recordStepEvidence: recordStepEvidence,
+    recordCausalEvidence: recordCausalEvidence,
+    recordGateSnapshot: recordGateSnapshot,
+    getLatestGateSnapshot: getLatestGateSnapshot,
+    recordCausalReport: recordCausalReport,
     recordRuntimeSnapshot: recordRuntimeSnapshot,
     recordGatewaySnapshot: recordGatewaySnapshot,
     recordContentScriptHealth: recordContentScriptHealth,
     recordSendButtonEvidence: recordSendButtonEvidence,
+    recordWorkflowStarted: recordWorkflowStarted,
+    recordWorkflowStepStarted: recordWorkflowStepStarted,
+    recordWorkflowStepCompleted: recordWorkflowStepCompleted,
+    recordWorkflowStepFailed: recordWorkflowStepFailed,
+    recordWorkflowCompleted: recordWorkflowCompleted,
     setLastWorkflow: setLastWorkflow,
     getDiagnosticSnapshot: getDiagnosticSnapshot,
     exportDiagnostics: exportDiagnostics

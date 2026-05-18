@@ -103,15 +103,24 @@
 
   async function exportDiagnostics() {
     const response = await messaging.sendMessage({ type: MESSAGE_TYPES.EXPORT_DIAGNOSTICS, targetSiteId: "deepseek" });
-    const payload = JSON.stringify(response.diagnostics, null, 2);
-    const blob = new Blob([payload], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
+    const diagnosticsPayload = JSON.stringify(response.diagnostics, null, 2);
+    const diagnosticsBlob = new Blob([diagnosticsPayload], { type: "application/json" });
+    const diagnosticsUrl = URL.createObjectURL(diagnosticsBlob);
+    const markdownPayload = globalScope.NewSiteCore.DiagnosticExporter.createCausalReportMarkdown(response.diagnostics);
+    const markdownBlob = new Blob([markdownPayload], { type: "text/markdown" });
+    const markdownUrl = URL.createObjectURL(markdownBlob);
+    const timestamp = Date.now();
     await chrome.downloads.download({
-      url: url,
-      filename: "autodipsik-ai-diagnostics-" + Date.now() + ".json",
+      url: markdownUrl,
+      filename: "causal-report-" + timestamp + ".md",
       saveAs: true
     });
-    Toast.showToast("Diagnostic export started.");
+    await chrome.downloads.download({
+      url: diagnosticsUrl,
+      filename: "diagnostic-" + timestamp + ".json",
+      saveAs: true
+    });
+    Toast.showToast("Causal report export started.");
   }
 
   function collectAutomationInput() {
@@ -190,7 +199,7 @@
     document.getElementById("automation-connect-gateway").onclick = connectGateway;
     document.getElementById("automation-disconnect-gateway").onclick = disconnectGateway;
     document.getElementById("automation-select-file").onclick = selectExcelFile;
-    document.getElementById("automation-export-diagnostics").onclick = exportDiagnostics;
+    document.getElementById("automation-export-causal-report").onclick = exportDiagnostics;
     document.getElementById("open-target-site").onclick = function onOpen() {
       chrome.tabs.create({ url: deepSeekConfig.baseUrl });
     };

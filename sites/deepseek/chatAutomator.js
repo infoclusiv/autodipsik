@@ -11,6 +11,8 @@
   const Telemetry = NewSiteCore.Telemetry;
   const TELEMETRY_EVENTS = NewSiteCore.TELEMETRY_EVENTS;
   const DiagnosticStore = NewSiteCore.DiagnosticStore;
+  const WorkflowStateTracker = NewSiteCore.WorkflowStateTracker;
+  const ComposerProbe = DeepSeekAutomation.DeepSeekComposerProbe;
 
   const requiredSelectorsForMainWorkflow = [
     "fileInput",
@@ -167,82 +169,7 @@
   }
 
   function buildAttachmentReadinessSnapshot(profile, workflowInput, context) {
-    const startedAt = context && typeof context.attachmentConfirmStartedAt === "number"
-      ? context.attachmentConfirmStartedAt
-      : Date.now();
-    const attempts = context && typeof context.attachmentConfirmAttempts === "number"
-      ? context.attachmentConfirmAttempts
-      : 0;
-    const fileNameExpected = getSelectedFileName(workflowInput, context);
-    const expectedExtension = getFileExtension(workflowInput && workflowInput.filePath, fileNameExpected);
-    const normalizedFileName = normalizeFileNameForMatch(fileNameExpected);
-    const normalizedTokens = normalizedFileName ? normalizedFileName.split(/\s+/).filter(Boolean) : [];
-    const uniqueToken = normalizedTokens.slice().sort(function sortByLength(a, b) {
-      return b.length - a.length;
-    }).find(function pickToken(token) {
-      return token.length >= 4;
-    }) || "";
-    const composerRect = getComposerRect(profile);
-    const candidates = findAttachmentCandidatesNearComposer(profile);
-
-    let bestCandidate = null;
-    let bestScore = -1;
-
-    candidates.forEach(function inspectCandidate(candidate) {
-      const lowerText = candidate.text.toLowerCase();
-      const normalizedText = normalizeFileNameForMatch(candidate.text);
-      const matchedByFileName = Boolean(fileNameExpected)
-        && (
-          lowerText.includes(String(fileNameExpected).toLowerCase())
-          || (normalizedFileName && normalizedText.includes(normalizedFileName))
-          || (uniqueToken && normalizedText.includes(uniqueToken))
-        );
-      const matchedByExtension = lowerText.includes(".xlsx")
-        || lowerText.includes(".xls")
-        || lowerText.includes("xlsx")
-        || lowerText.includes("xls");
-      const score = (matchedByFileName ? 100 : 0)
-        + (matchedByExtension ? 10 : 0)
-        + (candidate.nearComposer ? 5 : 0);
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestCandidate = {
-          element: candidate.element,
-          matchedText: candidate.text,
-          matchedByFileName: matchedByFileName,
-          matchedByExtension: matchedByExtension,
-          nearComposer: candidate.nearComposer,
-          attachmentElementSummary: DomHelpers.getElementSummary(candidate.element)
-        };
-      }
-    });
-
-    const hasAttachmentSignal = Boolean(bestCandidate && (bestCandidate.matchedByFileName || bestCandidate.matchedByExtension));
-
-    return {
-      attachmentVisible: hasAttachmentSignal,
-      fileNameExpected: fileNameExpected || "",
-      expectedExtension: expectedExtension || "",
-      matchedText: hasAttachmentSignal && bestCandidate ? bestCandidate.matchedText : "",
-      matchedByFileName: hasAttachmentSignal && bestCandidate ? bestCandidate.matchedByFileName : false,
-      matchedByExtension: hasAttachmentSignal && bestCandidate ? bestCandidate.matchedByExtension : false,
-      nearComposer: hasAttachmentSignal && bestCandidate ? bestCandidate.nearComposer : Boolean(composerRect),
-      uploadProgressVisible: isUploadProgressVisibleNearComposer(profile),
-      attachmentElementSummary: hasAttachmentSignal && bestCandidate ? bestCandidate.attachmentElementSummary : null,
-      visibleButtonsNearComposer: getVisibleButtonsNearComposer(profile),
-      elapsedMs: Math.max(0, Date.now() - startedAt),
-      attempts: attempts,
-      composerPresent: Boolean(composerRect),
-      attachmentSelectorUsed: profile.selectors.fileAttachedIndicator || "",
-      bestCandidateFound: hasAttachmentSignal,
-      missingSignals: hasAttachmentSignal
-        ? []
-        : [
-          fileNameExpected ? "No nearby attachment candidate matched the selected file name." : "Selected file name was unavailable for attachment matching.",
-          "No nearby attachment candidate showed an Excel file indicator."
-        ]
-    };
+    return ComposerProbe.probeAttachmentState(profile, workflowInput, context);
   }
 
   function isAttachmentReadinessSatisfied(snapshot) {
@@ -319,20 +246,7 @@
   }
 
   function getPromptReadinessEvidence(profile, workflowInput, context) {
-    const composer = context.chatInput || getTextareaForHeuristic(profile);
-    const promptText = workflowInput && workflowInput.promptText ? workflowInput.promptText : "";
-    const normalizedExpected = normalizePromptText(promptText);
-    const currentValue = getComposerValue(composer);
-    const normalizedCurrent = normalizePromptText(currentValue);
-    const promptReady = Boolean(normalizedExpected) && normalizedCurrent.includes(normalizedExpected);
-
-    return {
-      promptReady: promptReady,
-      promptValueLength: currentValue.length,
-      expectedPromptLength: promptText.length,
-      composerElementSummary: composer ? DomHelpers.getElementSummary(composer) : null,
-      currentPromptPreview: currentValue.slice(0, 160)
-    };
+    return ComposerProbe.probePromptState(profile, workflowInput, context);
   }
 
   function getCandidateSendButtonScore(element, profile, composerRect) {
@@ -416,101 +330,12 @@
     return reasons;
   }
 
-  function buildSendButtonReadyEvidence(profile) {
-    const composerRect = getComposerRect(profile);
-    const uploadProgressVisible = isUploadProgressVisibleNearComposer(profile);
-    const candidates = Array.from(document.querySelectorAll("[role='button'], button"))
-      .filter(function onlyVisibleNearComposer(element) {
-        if (!Selectors.isElementVisible(element)) {
-          return false;
-        }
-        return isElementNearComposerRect(element.getBoundingClientRect(), composerRect);
-      })
-      .map(function mapCandidate(element) {
-        const score = getCandidateSendButtonScore(element, profile, composerRect);
-        const visible = Selectors.isElementVisible(element);
-        const nearComposer = isElementNearComposerRect(element.getBoundingClientRect(), composerRect);
-        const disabledReasons = getSendButtonDisabledReasons(element, profile, uploadProgressVisible);
-        const matchesProfileSelector = (function checkMatch() {
-          try {
-            return Boolean(profile.selectors.sendButton && element.matches(profile.selectors.sendButton));
-          } catch (error) {
-            return false;
-          }
-        })();
-        const isLikelySendControl = score >= 35 || matchesProfileSelector;
-        return {
-          element: element,
-          score: score,
-          visible: visible,
-          nearComposer: nearComposer,
-          matchesProfileSelector: matchesProfileSelector,
-          isLikelySendControl: isLikelySendControl,
-          disabledReasons: disabledReasons,
-          foundBy: matchesProfileSelector ? "profile-selector" : "heuristic",
-          elementSummary: DomHelpers.getElementSummary(element)
-        };
-      })
-      .sort(function sortCandidates(left, right) {
-        return right.score - left.score;
-      });
-
-    const bestCandidate = candidates[0] || null;
-    const sendButtonReady = Boolean(
-      bestCandidate
-      && bestCandidate.isLikelySendControl
-      && bestCandidate.visible
-      && bestCandidate.nearComposer
-      && bestCandidate.disabledReasons.length === 0
-    );
-
-    return {
-      sendButtonReady: sendButtonReady,
-      foundBy: bestCandidate ? bestCandidate.foundBy : "none",
-      selectorName: "sendButton",
-      selectorValue: profile.selectors.sendButton,
-      disabledReasons: bestCandidate ? bestCandidate.disabledReasons : ["No send button candidate was found near the composer."],
-      uploadProgressVisible: uploadProgressVisible,
-      isLikelySendControl: Boolean(bestCandidate && bestCandidate.isLikelySendControl),
-      candidateCount: candidates.length,
-      bestCandidateSummary: bestCandidate ? bestCandidate.elementSummary : null,
-      visibleButtonsNearComposer: getVisibleButtonsNearComposer(profile),
-      element: sendButtonReady ? bestCandidate.element : null
-    };
+  function buildSendButtonReadyEvidence(profile, workflowInput, context) {
+    return ComposerProbe.probeSendButtonState(profile, workflowInput, context);
   }
 
   function buildComposerReadyToSendSnapshot(profile, workflowInput, context) {
-    const startedAt = context && typeof context.composerReadyStartedAt === "number"
-      ? context.composerReadyStartedAt
-      : Date.now();
-    const attempts = context && typeof context.composerReadyAttempts === "number"
-      ? context.composerReadyAttempts
-      : 0;
-    const attachmentEvidence = buildAttachmentReadinessSnapshot(profile, workflowInput, context);
-    const attachmentReady = isAttachmentReadinessSatisfied(attachmentEvidence);
-    const promptEvidence = getPromptReadinessEvidence(profile, workflowInput, context);
-    const sendButtonEvidence = buildSendButtonReadyEvidence(profile);
-    const ready = attachmentReady && promptEvidence.promptReady && sendButtonEvidence.sendButtonReady;
-
-    return {
-      attachmentReady: attachmentReady,
-      attachmentEvidence: attachmentEvidence,
-      promptReady: promptEvidence.promptReady,
-      promptValueLength: promptEvidence.promptValueLength,
-      expectedPromptLength: promptEvidence.expectedPromptLength,
-      promptEvidence: promptEvidence,
-      sendButtonReady: sendButtonEvidence.sendButtonReady,
-      sendButtonEvidence: Object.assign({}, sendButtonEvidence, { element: undefined }),
-      uploadProgressVisible: Boolean(attachmentEvidence.uploadProgressVisible || sendButtonEvidence.uploadProgressVisible),
-      attempts: attempts,
-      elapsedMs: Math.max(0, Date.now() - startedAt),
-      ready: ready,
-      readinessFailures: [
-        attachmentReady ? "" : "Attachment is not currently ready near the composer.",
-        promptEvidence.promptReady ? "" : "The expected prompt text is not present in the composer.",
-        sendButtonEvidence.sendButtonReady ? "" : (sendButtonEvidence.disabledReasons[0] || "The send button is not ready.")
-      ].filter(Boolean)
-    };
+    return ComposerProbe.probeComposerReadyToSend(profile, workflowInput, context);
   }
 
   function findSendButtonByHeuristic(profile) {
@@ -541,21 +366,7 @@
   }
 
   function getVisibleButtonsNearComposer(profile) {
-    const textareaRect = getComposerRect(profile);
-
-    return Array.from(document.querySelectorAll("[role='button'], button"))
-      .filter(function filterButton(element) {
-        if (!Selectors.isElementVisible(element)) {
-          return false;
-        }
-        if (!textareaRect) {
-          return true;
-        }
-        const rect = element.getBoundingClientRect();
-        return rect.y >= textareaRect.y - 40 && rect.y <= textareaRect.y + 180;
-      })
-      .slice(0, 10)
-      .map(DomHelpers.getElementSummary);
+    return ComposerProbe.getVisibleButtonsNearComposer(profile, {});
   }
 
   async function emitWorkflowEvent(context, eventName, level, message, data) {
@@ -730,8 +541,25 @@
         readinessFailures: []
       });
       snapshot.readinessFailures = appendAttachmentStabilityFailures(snapshot, listAttachmentReadinessFailures(baseSnapshot));
+      snapshot.blockingCondition = snapshot.attachmentReady
+        ? ""
+        : (baseSnapshot.blockingCondition || (snapshot.uploadProgressVisible ? "uploadProgressVisible" : "attachmentReady"));
 
       lastSnapshot = snapshot;
+      await DiagnosticStore.recordGateSnapshot({
+        traceId: context.traceId,
+        workflowId: context.workflowId,
+        workflowName: context.workflowName,
+        runKind: WorkflowStateTracker.inferRunKind(context.workflowName),
+        gateName: "wait_for_attachment_ready",
+        stepName: "wait_for_attachment_ready",
+        stage: "file_attachment",
+        status: snapshot.attachmentReady ? "passed" : "blocked",
+        attempt: context.attachmentConfirmAttempts,
+        elapsedMs: snapshot.elapsedMs,
+        blockingCondition: snapshot.blockingCondition,
+        snapshot: snapshot
+      });
       if (snapshot.attachmentReady) {
         lastReadySnapshot = snapshot;
         return {
@@ -762,6 +590,7 @@
       finalSnapshot,
       listAttachmentReadinessFailures(lastSnapshot || buildAttachmentReadinessSnapshot(profile, workflowInput, context))
     );
+    finalSnapshot.blockingCondition = finalSnapshot.blockingCondition || "attachmentReady";
 
     throw buildWorkflowError("FILE_ATTACHMENT_NOT_READY", "The attachment did not become ready before prompt insertion.", {
       profile: profile,
@@ -793,9 +622,23 @@
       context.composerReadyAttempts += 1;
       const snapshot = buildComposerReadyToSendSnapshot(profile, workflowInput, context);
       lastSnapshot = snapshot;
+      await DiagnosticStore.recordGateSnapshot({
+        traceId: context.traceId,
+        workflowId: context.workflowId,
+        workflowName: context.workflowName,
+        runKind: WorkflowStateTracker.inferRunKind(context.workflowName),
+        gateName: "wait_for_composer_ready_to_send",
+        stepName: "wait_for_composer_ready_to_send",
+        stage: "submit",
+        status: snapshot.ready ? "passed" : "blocked",
+        attempt: context.composerReadyAttempts,
+        elapsedMs: snapshot.elapsedMs,
+        blockingCondition: snapshot.blockingCondition,
+        snapshot: snapshot
+      });
 
       if (snapshot.ready) {
-        const liveSendButtonEvidence = buildSendButtonReadyEvidence(profile);
+        const liveSendButtonEvidence = buildSendButtonReadyEvidence(profile, workflowInput, context);
         context.sendButton = liveSendButtonEvidence.element;
         context.sendButtonEvidence = Object.assign({}, liveSendButtonEvidence, { element: undefined });
         return {
@@ -1161,7 +1004,7 @@
             };
           }
 
-          await DiagnosticStore.recordSendButtonEvidence(Object.assign({
+      await DiagnosticStore.recordSendButtonEvidence(Object.assign({
             traceId: context.traceId,
             workflowId: context.workflowId,
             selectorName: "sendButton",
@@ -1205,6 +1048,25 @@
           }
 
           const beforeClickSnapshot = DomHelpers.getElementSummary(context.sendButton);
+          const preClickProbe = ComposerProbe.probeComposerReadyToSend(profile, workflowInput, context);
+          await DiagnosticStore.recordGateSnapshot({
+            traceId: context.traceId,
+            workflowId: context.workflowId,
+            workflowName: context.workflowName,
+            runKind: WorkflowStateTracker.inferRunKind(context.workflowName),
+            gateName: "click_send",
+            stepName: "click_send",
+            stage: "submit",
+            status: "observed",
+            attempt: 1,
+            elapsedMs: 0,
+            blockingCondition: preClickProbe.blockingCondition || "",
+            snapshot: {
+              clickSendExecuted: false,
+              selectedCandidate: context.sendButtonEvidence && context.sendButtonEvidence.selectedCandidate ? context.sendButtonEvidence.selectedCandidate : null,
+              preClickComposerProbe: preClickProbe
+            }
+          });
           const clicked = DomHelpers.clickElement(context.sendButton);
           if (!clicked) {
             await emitWorkflowEvent(context, TELEMETRY_EVENTS.DEEPSEEK_SEND_FAILED, "error", "Send button click failed", {
@@ -1225,6 +1087,25 @@
             selectorName: "sendButton",
             selectorValue: profile.selectors.sendButton
           });
+          await DiagnosticStore.recordGateSnapshot({
+            traceId: context.traceId,
+            workflowId: context.workflowId,
+            workflowName: context.workflowName,
+            runKind: WorkflowStateTracker.inferRunKind(context.workflowName),
+            gateName: "click_send",
+            stepName: "click_send",
+            stage: "submit",
+            status: "passed",
+            attempt: 1,
+            elapsedMs: 0,
+            blockingCondition: "",
+            snapshot: {
+              clickSendExecuted: true,
+              clickedCandidateSummary: context.sendButtonEvidence && context.sendButtonEvidence.selectedCandidate ? context.sendButtonEvidence.selectedCandidate : beforeClickSnapshot,
+              beforeClick: beforeClickSnapshot,
+              afterClick: DomHelpers.getElementSummary(context.sendButton)
+            }
+          });
 
           return {
             clicked: true,
@@ -1235,6 +1116,57 @@
               afterClick: DomHelpers.getElementSummary(context.sendButton)
             },
             actual: "The send button click was dispatched."
+          };
+        }
+      },
+      {
+        name: "verify_submit_effect",
+        stage: "submit",
+        description: "Observe whether the send click produced a submit effect",
+        expected: "A post-click submit effect should be visible or the composer state should change after send.",
+        run: async function runStep(context) {
+          if (workflowInput.dryRun) {
+            return {
+              skipped: true,
+              reason: "dry_run"
+            };
+          }
+
+          const submitEffectSnapshot = ComposerProbe.probeSubmitEffect(profile, workflowInput, context);
+          await DiagnosticStore.recordGateSnapshot({
+            traceId: context.traceId,
+            workflowId: context.workflowId,
+            workflowName: context.workflowName,
+            runKind: WorkflowStateTracker.inferRunKind(context.workflowName),
+            gateName: "verify_submit_effect",
+            stepName: "verify_submit_effect",
+            stage: "submit",
+            status: submitEffectSnapshot.submitEffectObserved ? "passed" : "failed",
+            attempt: 1,
+            elapsedMs: 0,
+            blockingCondition: submitEffectSnapshot.blockingCondition || "",
+            snapshot: submitEffectSnapshot
+          });
+          await DiagnosticStore.recordCausalEvidence({
+            traceId: context.traceId,
+            workflowId: context.workflowId,
+            workflowName: context.workflowName,
+            runKind: WorkflowStateTracker.inferRunKind(context.workflowName),
+            gateName: "verify_submit_effect",
+            stepName: "verify_submit_effect",
+            stage: "submit",
+            status: submitEffectSnapshot.submitEffectObserved ? "passed" : "failed",
+            attempt: 1,
+            elapsedMs: 0,
+            blockingCondition: submitEffectSnapshot.blockingCondition || "",
+            snapshot: submitEffectSnapshot
+          });
+          return {
+            submitEffectObserved: submitEffectSnapshot.submitEffectObserved,
+            snapshot: submitEffectSnapshot,
+            actual: submitEffectSnapshot.submitEffectObserved
+              ? "A post-click submit effect was observed."
+              : "No post-click submit effect was observed."
           };
         }
       },
@@ -1319,6 +1251,7 @@
       return result;
     }
 
+    result.workflowName = workflowInput.dryRun ? "deepseek_dry_run" : "deepseek_excel_chat";
     result.diagnosticPackage = null;
     return result;
   }

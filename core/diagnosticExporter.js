@@ -1,6 +1,8 @@
 (function initDiagnosticExporter(globalScope) {
   const NewSiteCore = globalScope.NewSiteCore = globalScope.NewSiteCore || {};
   const Contracts = NewSiteCore.ObservabilityContracts;
+  const WorkflowStateTracker = NewSiteCore.WorkflowStateTracker;
+  const CausalDecisionTree = NewSiteCore.CausalDecisionTree;
   const Redactor = NewSiteCore.DiagnosticRedactor;
 
   function getLastEntry(list) {
@@ -182,10 +184,27 @@
   }
 
   function buildReadinessSummary(lastWorkflow, diagnosticSnapshot) {
+    const workflowSelection = WorkflowStateTracker.classifyWorkflowRuns({
+      workflowRuns: diagnosticSnapshot.workflowRuns,
+      traceId: lastWorkflow && lastWorkflow.traceId ? lastWorkflow.traceId : ""
+    });
+    const workflowId = workflowSelection.primaryWorkflowForCausalAnalysis && workflowSelection.primaryWorkflowForCausalAnalysis.workflowId
+      ? workflowSelection.primaryWorkflowForCausalAnalysis.workflowId
+      : "";
     const attachmentStep = findLatestStepEvidence(diagnosticSnapshot.stepEvidence, "wait_for_attachment_ready");
     const composerStep = findLatestStepEvidence(diagnosticSnapshot.stepEvidence, "wait_for_composer_ready_to_send");
-    const attachmentSnapshot = summarizeAttachmentReadiness(attachmentStep && attachmentStep.snapshot);
-    const composerSnapshot = summarizeComposerReadyToSend(composerStep && composerStep.snapshot);
+    const latestAttachmentGate = workflowId && Array.isArray(diagnosticSnapshot.gateSnapshots)
+      ? diagnosticSnapshot.gateSnapshots.filter(function onlyGate(entry) {
+        return entry && entry.workflowId === workflowId && entry.gateName === "wait_for_attachment_ready";
+      }).slice(-1)[0] || null
+      : null;
+    const latestComposerGate = workflowId && Array.isArray(diagnosticSnapshot.gateSnapshots)
+      ? diagnosticSnapshot.gateSnapshots.filter(function onlyGate(entry) {
+        return entry && entry.workflowId === workflowId && entry.gateName === "wait_for_composer_ready_to_send";
+      }).slice(-1)[0] || null
+      : null;
+    const attachmentSnapshot = summarizeAttachmentReadiness((latestAttachmentGate && latestAttachmentGate.snapshot) || (attachmentStep && attachmentStep.snapshot));
+    const composerSnapshot = summarizeComposerReadyToSend((latestComposerGate && latestComposerGate.snapshot) || (composerStep && composerStep.snapshot));
     const failedCondition = inferFailedReadinessCondition(lastWorkflow, attachmentSnapshot, composerSnapshot);
 
     return {
@@ -199,7 +218,11 @@
 
   function buildAiDebugSummary(lastWorkflow, errors, diagnosticSnapshot) {
     const lastError = getLastEntry(errors) || (lastWorkflow && lastWorkflow.error) || null;
-    const lastRun = getLastEntry(diagnosticSnapshot.workflowRuns) || {};
+    const workflowSelection = WorkflowStateTracker.classifyWorkflowRuns({
+      workflowRuns: diagnosticSnapshot.workflowRuns,
+      traceId: lastWorkflow && lastWorkflow.traceId ? lastWorkflow.traceId : ""
+    });
+    const lastRun = workflowSelection.primaryWorkflowForCausalAnalysis || getLastEntry(diagnosticSnapshot.workflowRuns) || {};
     const readinessSummary = buildReadinessSummary(lastWorkflow, diagnosticSnapshot);
     return Contracts.createAiDebugSummary({
       status: lastWorkflow && lastWorkflow.status ? lastWorkflow.status : "idle",
@@ -223,8 +246,54 @@
           "Re-run the workflow after refreshing the target tab."
         ],
       traceId: lastWorkflow && lastWorkflow.traceId ? lastWorkflow.traceId : "",
-      workflowId: lastWorkflow && lastWorkflow.workflowId ? lastWorkflow.workflowId : ""
+      workflowId: lastWorkflow && lastWorkflow.workflowId ? lastWorkflow.workflowId : "",
+      legacy: true,
+      source: "legacy-aiDebugSummary"
     });
+  }
+
+  function createCausalReportMarkdown(diagnostics) {
+    const causalReport = diagnostics && diagnostics.causalReport ? diagnostics.causalReport : {};
+    const evidence = causalReport.evidence || {};
+    const lines = [
+      "# Causal Report",
+      "",
+      "## Verdict",
+      String(causalReport.status || "unknown").toUpperCase(),
+      "",
+      "## Causal Code",
+      causalReport.causalCode || "UNKNOWN",
+      "",
+      "## Primary Workflow",
+      causalReport.primaryWorkflowName || causalReport.primaryWorkflowId || "Unknown",
+      "",
+      "## Blocked At",
+      causalReport.blockedAt || "None",
+      "",
+      "## Evidence",
+      "- blockingCondition: " + (causalReport.blockingCondition || "none"),
+      "- ownerModule: " + (causalReport.ownerModule || "unknown"),
+      "- attachmentReady: " + String(Boolean(evidence.latestComposerGate && evidence.latestComposerGate.attachmentReady)),
+      "- promptReady: " + String(Boolean(evidence.latestComposerGate && evidence.latestComposerGate.promptReady)),
+      "- sendButtonCandidateFound: " + String(Boolean(evidence.latestComposerGate && evidence.latestComposerGate.sendButtonEvidence && evidence.latestComposerGate.sendButtonEvidence.sendButtonCandidateFound)),
+      "- sendButtonReady: " + String(Boolean(evidence.latestComposerGate && evidence.latestComposerGate.sendButtonReady)),
+      "- disabledReason: " + (((evidence.latestComposerGate && evidence.latestComposerGate.sendButtonEvidence && evidence.latestComposerGate.sendButtonEvidence.disabledReason) || "none")),
+      "- clickSendExecuted: " + String(Boolean(evidence.clickSendStep && evidence.clickSendStep.status === "completed")),
+      "",
+      "## Missing Evidence",
+      (Array.isArray(causalReport.missingEvidence) && causalReport.missingEvidence.length
+        ? causalReport.missingEvidence.map(function mapEvidence(item) {
+          return "- " + item;
+        }).join("\n")
+        : "- none"),
+      "",
+      "## Exact Cause",
+      causalReport.exactKnownCause || "None",
+      "",
+      "## Next Best Action",
+      causalReport.nextBestAction || "None"
+    ];
+    return lines.join("\n");
   }
 
   function summarizeSelectedFile(gatewayStatus, selectedGatewayFile) {
@@ -254,11 +323,21 @@
     const diagnosticSnapshot = options.diagnosticSnapshot || Contracts.createDiagnosticSnapshot();
     const readinessSummary = buildReadinessSummary(lastWorkflow, diagnosticSnapshot);
     const lastError = getLastEntry(errors) || (lastWorkflow && lastWorkflow.error) || null;
+    const workflowSelection = WorkflowStateTracker.classifyWorkflowRuns({
+      workflowRuns: diagnosticSnapshot.workflowRuns,
+      traceId: lastWorkflow && lastWorkflow.traceId ? lastWorkflow.traceId : ""
+    });
+    const causalReport = CausalDecisionTree.analyzeWorkflowCausality({
+      lastWorkflow: lastWorkflow,
+      diagnosticSnapshot: diagnosticSnapshot,
+      errors: errors
+    });
 
     const rawPackage = {
       generatedAt: new Date().toISOString(),
       summaryVersion: 1,
       aiDebugSummary: buildAiDebugSummary(lastWorkflow, errors, diagnosticSnapshot),
+      causalReport: causalReport,
       environment: {
         extensionVersion: manifest.version,
         manifestVersion: manifest.manifest_version,
@@ -282,6 +361,10 @@
         behavior: activeProfile.behavior
       },
       workflow: {
+        latestDryRunWorkflow: workflowSelection.latestDryRunWorkflow,
+        latestActualWorkflow: workflowSelection.latestActualWorkflow,
+        activeOrIncompleteWorkflow: workflowSelection.activeOrIncompleteWorkflow,
+        primaryWorkflowForCausalAnalysis: workflowSelection.primaryWorkflowForCausalAnalysis,
         timeline: lastWorkflow && lastWorkflow.timeline ? lastWorkflow.timeline : [],
         steps: diagnosticSnapshot.stepEvidence,
         lastWorkflow: lastWorkflow
@@ -324,7 +407,8 @@
             status: step.status
           };
         })
-      }
+      },
+      causalReportMarkdown: createCausalReportMarkdown({ causalReport: causalReport })
     };
 
     const sanitized = Redactor.sanitizeDiagnosticPackage(rawPackage);
@@ -333,6 +417,7 @@
   }
 
   NewSiteCore.DiagnosticExporter = {
-    exportDiagnostics: exportDiagnostics
+    exportDiagnostics: exportDiagnostics,
+    createCausalReportMarkdown: createCausalReportMarkdown
   };
 })(globalThis);

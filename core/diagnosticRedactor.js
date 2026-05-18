@@ -46,6 +46,10 @@
         redacted[key] = truncatePrompt(entry, options.promptMaxLength);
         return;
       }
+      if (key === "currentPromptPreview") {
+        redacted[key] = truncatePrompt(entry, 120);
+        return;
+      }
       redacted[key] = deepRedact(entry, options);
     });
     return redacted;
