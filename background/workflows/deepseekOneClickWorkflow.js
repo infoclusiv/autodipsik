@@ -9,6 +9,7 @@
   const DiagnosticStore = NewSiteCore.DiagnosticStore;
   const GatewayClient = NewSiteCore.GatewayClient;
   const BackgroundContracts = NewSiteCore.BackgroundContracts;
+  const GatewayContracts = NewSiteCore.GatewayContracts;
 
   const AUTOMATION_STAGE_MODULES = {
     ensure_gateway_connected: "background/workflows/deepseekOneClickWorkflow.js",
@@ -16,7 +17,8 @@
     ensure_deepseek_tab: "background/services/deepseekTabService.js",
     detect_page_state: "sites/deepseek/content.js",
     run_preflight: "sites/deepseek/chatAutomator.js",
-    run_actual_automation: "sites/deepseek/chatAutomator.js"
+    run_actual_automation: "sites/deepseek/chatAutomator.js",
+    save_deepseek_response_json: "background/services/gatewayFileService.js"
   };
 
   async function runAutomationStage(traceId, stageName, fn) {
@@ -92,6 +94,7 @@
     let pageState = null;
     let workflowId = "";
     let automationResult = null;
+    let responseJsonSave = null;
 
     try {
       gatewayStatus = await runAutomationStage(traceId, "ensure_gateway_connected", async function ensureGatewayConnected() {
@@ -159,7 +162,8 @@
               dryRun: true,
               promptText: input.promptText,
               useGatewaySelectedFile: true,
-              selectedFile: selectedFile
+              selectedFile: selectedFile,
+              waitForResponse: false
             }
           });
         });
@@ -186,6 +190,7 @@
               promptText: input.promptText,
               useGatewaySelectedFile: true,
               selectedFile: selectedFile,
+              waitForResponse: true,
               fileId: selectedFile.fileId,
               fileName: selectedFile.name,
               fileExtension: selectedFile.extension
@@ -201,6 +206,56 @@
           return NewSiteBackground.DeepSeekTabService.forward(nextMessage);
         });
         workflowId = automationResult.workflowId || workflowId;
+
+        responseJsonSave = await runAutomationStage(traceId, "save_deepseek_response_json", async function saveDeepSeekResponseJsonStage() {
+          const captureResult = automationResult
+            && automationResult.results
+            && automationResult.results.wait_for_deepseek_response_complete
+            ? automationResult.results.wait_for_deepseek_response_complete
+            : null;
+
+          if (!captureResult || captureResult.skipped || captureResult.responseCaptured !== true || !captureResult.capturedResponse) {
+            throw Errors.createError("DEEPSEEK_RESPONSE_CAPTURE_MISSING", "The DeepSeek response was not captured, so no JSON save request can be sent.", {
+              traceId: traceId,
+              workflowId: workflowId,
+              failedStage: "save_deepseek_response_json",
+              expected: "A completed wait_for_deepseek_response_complete result with capturedResponse should exist before saving JSON.",
+              actual: "The actual automation completed without a valid captured response result."
+            });
+          }
+
+          GatewayContracts.validateDeepSeekCapturedResponse(captureResult.capturedResponse, {
+            messageType: "RUN_AUTOMATION_RESULT"
+          });
+
+          if (!selectedFile || !selectedFile.fileId) {
+            throw Errors.createError("GATEWAY_FILE_NOT_SELECTED", "The selected file metadata was missing before saving the DeepSeek response JSON.", {
+              traceId: traceId,
+              workflowId: workflowId,
+              failedStage: "save_deepseek_response_json",
+              expected: "A selected Excel file with fileId should still be available after automation completes.",
+              actual: "selectedFile.fileId was missing."
+            });
+          }
+
+          if (captureResult.capturedResponse.textLength <= 0) {
+            throw Errors.createError("DEEPSEEK_CAPTURED_RESPONSE_EMPTY", "The captured DeepSeek response was empty.", {
+              traceId: traceId,
+              workflowId: workflowId,
+              failedStage: "save_deepseek_response_json",
+              expected: "Captured response text should be non-empty before sending it to the gateway.",
+              actual: "capturedResponse.textLength was " + String(captureResult.capturedResponse.textLength) + "."
+            });
+          }
+
+          return NewSiteBackground.GatewayFileService.saveDeepSeekResponseJson({
+            traceId: traceId,
+            workflowId: workflowId,
+            fileId: selectedFile.fileId,
+            selectedFile: selectedFile,
+            response: captureResult.capturedResponse
+          });
+        });
       }
 
       await Telemetry.emit({
@@ -223,12 +278,26 @@
         selectedFile: selectedFile,
         pageState: pageState,
         automationResult: automationResult,
+        responseJsonSave: responseJsonSave,
         diagnosticPackageReady: Boolean(automationResult && automationResult.diagnosticPackage),
         error: null
       };
     } catch (error) {
       const structured = Errors.toStructuredError(error);
       structured.traceId = structured.traceId || traceId;
+      if (structured.failedStage === "save_deepseek_response_json") {
+        const captureResult = automationResult
+          && automationResult.results
+          && automationResult.results.wait_for_deepseek_response_complete
+          ? automationResult.results.wait_for_deepseek_response_complete
+          : null;
+        structured.fileIdPresent = Boolean(selectedFile && selectedFile.fileId);
+        structured.selectedFileName = selectedFile && selectedFile.name ? selectedFile.name : "";
+        structured.responseTextLength = captureResult && captureResult.capturedResponse
+          ? captureResult.capturedResponse.textLength || 0
+          : 0;
+        structured.expected = structured.expected || "The gateway should write a DeepSeek response JSON file beside the selected Excel file.";
+      }
       await DiagnosticStore.recordError(structured);
       await Telemetry.emit({
         eventName: TELEMETRY_EVENTS.AUTOMATION_ONE_CLICK_FAILED,
@@ -253,6 +322,7 @@
         selectedFile: selectedFile,
         pageState: pageState,
         automationResult: automationResult,
+        responseJsonSave: responseJsonSave,
         diagnosticPackageReady: true,
         error: structured
       };

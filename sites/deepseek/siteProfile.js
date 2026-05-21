@@ -60,6 +60,16 @@
       readinessDiagnosticsEnabled: true,
       expectedFileExtensions: [".xls", ".xlsx"]
     },
+    responseCapture: {
+      assistantMessageSelector: ".ds-markdown.ds-assistant-message-main-content",
+      stableTextMinDurationMs: 3000,
+      timeoutMs: 120000,
+      pollIntervalMs: 250,
+      minTextLength: 1
+    },
+    completionSignals: {
+      useSendButtonDisabledAsSupportingSignal: true
+    },
     upload: {
       mode: "native-file-input",
       acceptedExtensions: [".xls", ".xlsx", ".csv"],
@@ -84,6 +94,8 @@
     merged.selectors = Object.assign({}, base.selectors, input && input.selectors ? input.selectors : {});
     merged.timing = Object.assign({}, base.timing, input && input.timing ? input.timing : {});
     merged.behavior = Object.assign({}, base.behavior, input && input.behavior ? input.behavior : {});
+    merged.responseCapture = Object.assign({}, base.responseCapture, input && input.responseCapture ? input.responseCapture : {});
+    merged.completionSignals = Object.assign({}, base.completionSignals, input && input.completionSignals ? input.completionSignals : {});
     merged.upload = Object.assign({}, base.upload, input && input.upload ? input.upload : {});
     merged.capabilities = Object.assign({}, base.capabilities, input && input.capabilities ? input.capabilities : {});
     merged.diagnostics = Object.assign({}, base.diagnostics, input && input.diagnostics ? input.diagnostics : {});
@@ -138,6 +150,23 @@
         errors.push("Timing value must be a non-negative number: " + key);
       }
     });
+
+    Object.keys(normalized.responseCapture).forEach(function checkResponseCapture(key) {
+      const value = normalized.responseCapture[key];
+      if (key === "assistantMessageSelector") {
+        if (!value) {
+          errors.push("responseCapture.assistantMessageSelector is required.");
+        }
+        return;
+      }
+      if (typeof value !== "number" || value < 0) {
+        errors.push("responseCapture value must be a non-negative number: " + key);
+      }
+    });
+
+    if (typeof normalized.completionSignals.useSendButtonDisabledAsSupportingSignal !== "boolean") {
+      errors.push("completionSignals.useSendButtonDisabledAsSupportingSignal must be a boolean.");
+    }
 
     if (!Array.isArray(normalized.behavior.expectedFileExtensions)) {
       errors.push("behavior.expectedFileExtensions must be an array.");

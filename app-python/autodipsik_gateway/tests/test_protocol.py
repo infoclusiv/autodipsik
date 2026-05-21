@@ -25,3 +25,8 @@ def test_missing_id_fails() -> None:
 def test_file_content_by_path_message_passes() -> None:
     message = parse_message('{"id":"2","type":"FILE_CONTENT_BY_PATH_REQUEST","payload":{"path":"C:/tmp/sample.xlsx"}}')
     assert message["type"] == "FILE_CONTENT_BY_PATH_REQUEST"
+
+
+def test_save_deepseek_response_json_message_passes() -> None:
+    message = parse_message('{"id":"3","type":"SAVE_DEEPSEEK_RESPONSE_JSON","payload":{"fileId":"abc","traceId":"trace_1","response":{"text":"ok"}}}')
+    assert message["type"] == "SAVE_DEEPSEEK_RESPONSE_JSON"

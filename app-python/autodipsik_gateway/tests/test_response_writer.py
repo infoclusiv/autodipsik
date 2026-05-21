@@ -1,0 +1,90 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+from autodipsik_gateway.files.file_store import StoredFile
+from autodipsik_gateway.files.response_writer import write_deepseek_response_json
+
+
+def build_selected_file(path: Path) -> StoredFile:
+    return StoredFile(
+        file_id="file-123",
+        path=path,
+        name=path.name,
+        extension=path.suffix.lower(),
+        size_bytes=path.stat().st_size,
+        last_modified="2026-05-20T03:25:01.462Z",
+    )
+
+
+def build_payload(file_id: str = "file-123", text: str = "Respuesta final con tilde á") -> dict:
+    return {
+        "fileId": file_id,
+        "traceId": "trace_123",
+        "workflowId": "wf_123",
+        "response": {
+            "capturedAt": "2026-05-20T03:25:01.462Z",
+            "url": "https://chat.deepseek.com/a/chat/s/test",
+            "title": "Analisis semanal - DeepSeek",
+            "selectorUsed": ".ds-markdown.ds-assistant-message-main-content",
+            "selectedMessageIndex": 0,
+            "text": text,
+            "textLength": len(text),
+            "stabilityMs": 3000,
+            "pollIntervalMs": 250,
+            "elapsedMs": 18420,
+            "completionSignals": {
+                "assistantMessageFound": True,
+                "textStable": True,
+                "composerDisabledObserved": True,
+                "sendButtonDisabledObserved": True,
+            },
+        },
+    }
+
+
+def fixed_clock() -> datetime:
+    return datetime(2026, 5, 20, 3, 25, 1, tzinfo=timezone.utc)
+
+
+def test_writes_json_beside_selected_excel(tmp_path: Path) -> None:
+    excel_path = tmp_path / "Analisis comida.xlsx"
+    excel_path.write_bytes(b"xlsx")
+    result = write_deepseek_response_json(build_selected_file(excel_path), build_payload(), output_clock=fixed_clock)
+    output_path = Path(result["outputPath"])
+    assert output_path.parent == tmp_path
+    assert output_path.name == "Analisis comida.deepseek-response.20260520-032501.json"
+    data = json.loads(output_path.read_text(encoding="utf-8"))
+    assert data["capture"]["text"] == "Respuesta final con tilde á"
+    assert data["sourceFile"]["fileId"] == "file-123"
+
+
+def test_duplicate_timestamp_suffixes_filename(tmp_path: Path) -> None:
+    excel_path = tmp_path / "Analisis comida.xlsx"
+    excel_path.write_bytes(b"xlsx")
+    selected_file = build_selected_file(excel_path)
+    write_deepseek_response_json(selected_file, build_payload(), output_clock=fixed_clock)
+    second = write_deepseek_response_json(selected_file, build_payload(), output_clock=fixed_clock)
+    assert second["fileName"] == "Analisis comida.deepseek-response.20260520-032501.2.json"
+
+
+def test_rejects_empty_response_text(tmp_path: Path) -> None:
+    excel_path = tmp_path / "Analisis comida.xlsx"
+    excel_path.write_bytes(b"xlsx")
+    try:
+        write_deepseek_response_json(build_selected_file(excel_path), build_payload(text="   "), output_clock=fixed_clock)
+        assert False
+    except ValueError as error:
+        assert str(error).startswith("DEEPSEEK_CAPTURED_RESPONSE_EMPTY|")
+
+
+def test_rejects_mismatched_file_id(tmp_path: Path) -> None:
+    excel_path = tmp_path / "Analisis comida.xlsx"
+    excel_path.write_bytes(b"xlsx")
+    try:
+        write_deepseek_response_json(build_selected_file(excel_path), build_payload(file_id="other-file"), output_clock=fixed_clock)
+        assert False
+    except ValueError as error:
+        assert str(error).startswith("GATEWAY_SELECTED_FILE_MISMATCH|")

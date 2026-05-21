@@ -38,7 +38,10 @@
     GATEWAY_MESSAGE_SENT: "extension.gateway.message.sent",
     GATEWAY_MESSAGE_RECEIVED: "extension.gateway.message.received",
     GATEWAY_REQUEST_FAILED: "extension.gateway.request.failed",
-    GATEWAY_FILE_SELECTED: "extension.gateway.file.selected"
+    GATEWAY_FILE_SELECTED: "extension.gateway.file.selected",
+    DEEPSEEK_RESPONSE_JSON_SAVE_STARTED: "extension.gateway.deepseek_response_json.save.started",
+    DEEPSEEK_RESPONSE_JSON_SAVE_COMPLETED: "extension.gateway.deepseek_response_json.save.completed",
+    DEEPSEEK_RESPONSE_JSON_SAVE_FAILED: "extension.gateway.deepseek_response_json.save.failed"
   };
 
   NewSiteCore.DeepSeekTelemetryEvents = {
@@ -63,6 +66,10 @@
     DEEPSEEK_SEND_BUTTON_HEURISTIC_USED: "extension.deepseek.send_button.heuristic_used",
     DEEPSEEK_SEND_CLICKED: "extension.deepseek.send.clicked",
     DEEPSEEK_SEND_FAILED: "extension.deepseek.send.failed",
+    DEEPSEEK_RESPONSE_CAPTURE_STARTED: "extension.deepseek.response_capture.started",
+    DEEPSEEK_RESPONSE_CAPTURE_PROGRESS: "extension.deepseek.response_capture.progress",
+    DEEPSEEK_RESPONSE_CAPTURE_COMPLETED: "extension.deepseek.response_capture.completed",
+    DEEPSEEK_RESPONSE_CAPTURE_FAILED: "extension.deepseek.response_capture.failed",
     DEEPSEEK_WORKFLOW_COMPLETED: "extension.deepseek.workflow.completed",
     DEEPSEEK_WORKFLOW_FAILED: "extension.deepseek.workflow.failed",
     DEEPSEEK_DIAGNOSTIC_PACKAGE_CREATED: "extension.deepseek.diagnostic_package.created",

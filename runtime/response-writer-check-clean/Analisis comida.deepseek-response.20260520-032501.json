@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "source": "deepseek",
+  "capturedAt": "2026-05-20T03:25:01.462Z",
+  "url": "https://chat.deepseek.com/a/chat/s/test",
+  "title": "Analisis semanal - DeepSeek",
+  "traceId": "trace_123",
+  "workflowId": "wf_123",
+  "sourceFile": {
+    "fileId": "file-123",
+    "name": "Analisis comida.xlsx",
+    "extension": ".xlsx",
+    "sizeBytes": 4
+  },
+  "capture": {
+    "selectorUsed": ".ds-markdown.ds-assistant-message-main-content",
+    "selectedMessageIndex": 0,
+    "text": "Respuesta final con tilde á",
+    "textLength": 27,
+    "stabilityMs": 3000,
+    "pollIntervalMs": 250,
+    "elapsedMs": 18420,
+    "completionSignals": {
+      "assistantMessageFound": true,
+      "textStable": true
+    }
+  },
+  "savedAt": "2026-05-20T03:25:01.000Z"
+}

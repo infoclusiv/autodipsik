@@ -40,6 +40,7 @@
     const gatewayStatus = store.gatewayStatus || {};
     const selectedFile = store.selectedFile || gatewayStatus.selectedFile || null;
     const lastRunSummary = store.lastRunSummary || workflow || {};
+    const responseJsonSave = lastRunSummary.responseJsonSave || null;
     const error = store.lastError || lastRunSummary.error || null;
 
     root.innerHTML = [
@@ -84,6 +85,9 @@
       "<div class='metric-card'><span>Workflow ID</span><strong>" + escapeHtml(lastRunSummary.workflowId || "None") + "</strong></div>",
       "<div class='metric-card'><span>Last error</span><strong>" + escapeHtml(error ? error.message : "None") + "</strong></div>",
       "</div>",
+      (responseJsonSave
+        ? "<p class='field-help'>DeepSeek response JSON saved: " + escapeHtml(responseJsonSave.fileName || "Unknown") + "</p>"
+        : ""),
       "</div>",
       "<div class='card'>",
       "<h3>Runtime Snapshot</h3>",

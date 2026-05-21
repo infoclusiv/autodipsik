@@ -192,7 +192,13 @@
       store.selectedFile = response.gatewayStatus.selectedFile || store.selectedFile;
     }
     rerender();
-    Toast.showToast(response.status === "completed" ? "Automation executed." : (response.error && response.error.message ? response.error.message : "Automation failed."));
+    Toast.showToast(
+      response.status === "completed"
+        ? (response.responseJsonSave && response.responseJsonSave.fileName
+          ? "DeepSeek response JSON saved: " + response.responseJsonSave.fileName
+          : "Automation executed.")
+        : (response.error && response.error.message ? response.error.message : "Automation failed.")
+    );
   }
 
   function bindEvents() {

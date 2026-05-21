@@ -8,6 +8,7 @@
   const GatewayClient = NewSiteCore.GatewayClient;
   const GatewayProtocol = NewSiteCore.GatewayProtocol;
   const DiagnosticStore = NewSiteCore.DiagnosticStore;
+  const GatewayContracts = NewSiteCore.GatewayContracts;
 
   async function ensureConnected() {
     try {
@@ -180,10 +181,87 @@
     return fileResponse.payload || null;
   }
 
+  async function saveDeepSeekResponseJson(input) {
+    const requestPayload = {
+      fileId: input && input.fileId ? input.fileId : "",
+      traceId: input && input.traceId ? input.traceId : "",
+      workflowId: input && input.workflowId ? input.workflowId : "",
+      selectedFile: input && input.selectedFile ? input.selectedFile : null,
+      response: input && input.response ? input.response : null
+    };
+
+    GatewayContracts.validateSaveDeepSeekResponseJsonRequest(requestPayload, {
+      messageType: GatewayProtocol.GATEWAY_MESSAGE_TYPES.SAVE_DEEPSEEK_RESPONSE_JSON
+    });
+
+    await Telemetry.emit({
+      eventName: TELEMETRY_EVENTS.DEEPSEEK_RESPONSE_JSON_SAVE_STARTED,
+      traceId: requestPayload.traceId,
+      workflowId: requestPayload.workflowId,
+      siteId: "deepseek",
+      component: "background",
+      level: "info",
+      message: "DeepSeek response JSON save requested",
+      data: {
+        fileId: requestPayload.fileId,
+        fileName: requestPayload.selectedFile && requestPayload.selectedFile.name ? requestPayload.selectedFile.name : "",
+        responseTextLength: requestPayload.response.textLength
+      }
+    });
+
+    try {
+      const gatewayResponse = await GatewayClient.request(
+        GatewayProtocol.GATEWAY_MESSAGE_TYPES.SAVE_DEEPSEEK_RESPONSE_JSON,
+        requestPayload
+      );
+
+      GatewayContracts.validateSaveDeepSeekResponseJsonResponse(gatewayResponse.payload || null, {
+        messageType: gatewayResponse.type || GatewayProtocol.GATEWAY_MESSAGE_TYPES.DEEPSEEK_RESPONSE_JSON_SAVED
+      });
+
+      await DiagnosticStore.recordGatewaySnapshot({
+        traceId: requestPayload.traceId,
+        workflowId: requestPayload.workflowId,
+        stage: "save_deepseek_response_json",
+        gatewayResponseType: gatewayResponse.type,
+        saveResult: gatewayResponse.payload || null
+      });
+
+      await Telemetry.emit({
+        eventName: TELEMETRY_EVENTS.DEEPSEEK_RESPONSE_JSON_SAVE_COMPLETED,
+        traceId: requestPayload.traceId,
+        workflowId: requestPayload.workflowId,
+        siteId: "deepseek",
+        component: "background",
+        level: "info",
+        message: "DeepSeek response JSON save completed",
+        data: gatewayResponse.payload || {}
+      });
+
+      return gatewayResponse.payload || null;
+    } catch (error) {
+      const structured = Errors.toStructuredError(error);
+      await Telemetry.emit({
+        eventName: TELEMETRY_EVENTS.DEEPSEEK_RESPONSE_JSON_SAVE_FAILED,
+        traceId: requestPayload.traceId,
+        workflowId: requestPayload.workflowId,
+        siteId: "deepseek",
+        component: "background",
+        level: "error",
+        message: structured.message,
+        expected: structured.expected,
+        actual: structured.actual,
+        data: structured
+      });
+      throw structured;
+    }
+  }
+
   NewSiteBackground.GatewayFileService = {
     ensureConnected: ensureConnected,
     selectFile: selectFile,
     executeUpload: executeUpload,
-    resolvePayload: resolvePayload
+    resolvePayload: resolvePayload,
+    saveDeepSeekResponseJson: saveDeepSeekResponseJson
   };
 })(globalThis);

@@ -13,6 +13,7 @@
   const DiagnosticStore = NewSiteCore.DiagnosticStore;
   const WorkflowStateTracker = NewSiteCore.WorkflowStateTracker;
   const ComposerProbe = DeepSeekAutomation.DeepSeekComposerProbe;
+  const ResponseCapture = DeepSeekAutomation.DeepSeekResponseCapture;
 
   const requiredSelectorsForMainWorkflow = [
     "fileInput",
@@ -1214,6 +1215,48 @@
         }
       },
       {
+        name: "wait_for_deepseek_response_complete",
+        stage: "response_capture",
+        description: "Wait for the DeepSeek assistant response to finish and become text-stable",
+        expected: "The latest visible DeepSeek assistant response should appear and remain stable before capture completes.",
+        run: async function runStep(context) {
+          if (workflowInput.dryRun) {
+            return {
+              skipped: true,
+              reason: "dry_run",
+              actual: "Response capture was skipped during dry run."
+            };
+          }
+
+          if (!workflowInput.waitForResponse) {
+            return {
+              skipped: true,
+              reason: "wait_for_response_disabled",
+              actual: "Response capture was skipped because waitForResponse was disabled."
+            };
+          }
+
+          const capturedResponse = await ResponseCapture.waitForFinalResponse(profile, workflowInput, context);
+          context.capturedResponse = capturedResponse;
+
+          return {
+            responseCaptured: true,
+            capturedResponse: capturedResponse,
+            selectorName: "assistantMessageSelector",
+            selectorValue: capturedResponse.selectorUsed,
+            snapshot: {
+              selectorUsed: capturedResponse.selectorUsed,
+              selectedMessageIndex: capturedResponse.selectedMessageIndex,
+              textLength: capturedResponse.textLength,
+              stabilityMs: capturedResponse.stabilityMs,
+              elapsedMs: capturedResponse.elapsedMs,
+              completionSignals: capturedResponse.completionSignals
+            },
+            actual: "The DeepSeek assistant response became stable and was captured."
+          };
+        }
+      },
+      {
         name: "finalize",
         stage: "finalize",
         description: "Return a compact workflow summary for diagnostics",
@@ -1224,6 +1267,15 @@
           });
           return {
             dryRun: workflowInput.dryRun,
+            responseCapture: context.capturedResponse ? {
+              captured: true,
+              textLength: context.capturedResponse.textLength,
+              selectorUsed: context.capturedResponse.selectorUsed,
+              completionSignals: context.capturedResponse.completionSignals
+            } : {
+              captured: false,
+              waitForResponse: workflowInput.waitForResponse
+            },
             finalPageState: PageState.detectPageState(profile),
             pageSummary: DomHelpers.getPageSummary(),
             actual: "The workflow finished and returned a final page summary."
@@ -1257,8 +1309,31 @@
         profileSnapshot: profile,
         selectorHealth: await collectSelectorHealth(profile),
         error: result.error || null,
-        selectedFile: workflowInput.selectedFile || null
+        selectedFile: workflowInput.selectedFile || null,
+        responseCapture: result.results && result.results.wait_for_deepseek_response_complete
+          ? {
+            responseCaptured: Boolean(result.results.wait_for_deepseek_response_complete.responseCaptured),
+            selectorUsed: result.results.wait_for_deepseek_response_complete.selectorValue || "",
+            textLength: result.results.wait_for_deepseek_response_complete.snapshot
+              ? result.results.wait_for_deepseek_response_complete.snapshot.textLength || 0
+              : 0,
+            stabilityMs: result.results.wait_for_deepseek_response_complete.snapshot
+              ? result.results.wait_for_deepseek_response_complete.snapshot.stabilityMs || 0
+              : 0,
+            completionSignals: result.results.wait_for_deepseek_response_complete.snapshot
+              ? result.results.wait_for_deepseek_response_complete.snapshot.completionSignals || {}
+              : {}
+          }
+          : null
       };
+      if (result.failedStep === "wait_for_deepseek_response_complete" && result.error && result.error.snapshot) {
+        diagnosticPackage.selectorUsed = result.error.selector || profile.responseCapture && profile.responseCapture.assistantMessageSelector || "";
+        diagnosticPackage.assistantMessageCount = typeof result.error.snapshot.assistantMessageCount === "number" ? result.error.snapshot.assistantMessageCount : 0;
+        diagnosticPackage.lastTextLength = typeof result.error.snapshot.textLength === "number" ? result.error.snapshot.textLength : 0;
+        diagnosticPackage.stableDurationMs = typeof result.error.snapshot.stableDurationMs === "number" ? result.error.snapshot.stableDurationMs : 0;
+        diagnosticPackage.timeoutMs = profile.responseCapture && profile.responseCapture.timeoutMs ? profile.responseCapture.timeoutMs : 0;
+        diagnosticPackage.completionSignals = result.error.snapshot.completionSignals || {};
+      }
       Object.assign(diagnosticPackage, buildComposerDiagnosticSnapshot(profile));
       diagnosticPackage.sendButtonEvidence = result.results && result.results.wait_for_composer_ready_to_send
         ? Object.assign({}, (result.results.wait_for_composer_ready_to_send.snapshot && result.results.wait_for_composer_ready_to_send.snapshot.sendButtonEvidence) || {}, {

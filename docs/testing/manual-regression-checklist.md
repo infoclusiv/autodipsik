@@ -56,12 +56,18 @@ Use this checklist after each refactor phase. The goal is to confirm that modula
 - [ ] Confirm the prompt is inserted.
 - [ ] Confirm the send button is found.
 - [ ] Confirm the send button is clicked on non-dry runs.
+- [ ] Confirm the workflow waits for the final DeepSeek assistant response after submit.
+- [ ] Confirm the final response is captured only after the visible text stabilizes.
+- [ ] Confirm a `.deepseek-response.<timestamp>.json` file is created beside the selected Excel file.
+- [ ] Confirm the side panel shows `DeepSeek response JSON saved: <filename>` after success.
 
 ### `RUN_AUTOMATION`
 
 - [ ] Run a dry-run and confirm it does not require a file payload.
 - [ ] Run a real automation and confirm it still requires a gateway-selected Excel file.
 - [ ] Confirm the response still includes workflow details and errors in the same shape.
+- [ ] Confirm dry run skips response capture with reason `dry_run`.
+- [ ] Confirm real automation includes `wait_for_deepseek_response_complete` in the workflow results when `waitForResponse` is true.
 
 ## Diagnostics
 
@@ -93,6 +99,8 @@ Use this checklist after each refactor phase. The goal is to confirm that modula
 - [ ] Confirm protocol tests still pass.
 - [ ] Confirm file validation tests still pass.
 - [ ] Confirm serialization tests still pass.
+- [ ] Confirm response writer tests pass.
+- [ ] Open a saved response JSON and confirm UTF-8 characters are preserved without ASCII escaping.
 
 ## Completion Gate
 
