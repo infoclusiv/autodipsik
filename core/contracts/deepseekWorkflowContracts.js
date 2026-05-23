@@ -10,6 +10,15 @@
       messageType: context && context.messageType ? context.messageType : ""
     });
 
+    if (typeof input.attachFile !== "undefined" && typeof input.attachFile !== "boolean") {
+      throw Errors.createError("CONTRACT_VALIDATION_FAILED", "attachFile must be a boolean when provided.", {
+        expected: "attachFile should be true or false.",
+        actual: "attachFile was " + String(input.attachFile) + ".",
+        messageType: context && context.messageType ? context.messageType : "",
+        probableCause: "core/contracts/deepseekWorkflowContracts.js"
+      });
+    }
+
     if (typeof input.waitForResponse !== "undefined" && typeof input.waitForResponse !== "boolean") {
       throw Errors.createError("CONTRACT_VALIDATION_FAILED", "waitForResponse must be a boolean when provided.", {
         expected: "waitForResponse should be true or false.",

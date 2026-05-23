@@ -5,7 +5,7 @@ from pathlib import Path
 from autodipsik_gateway.config import Settings
 from autodipsik_gateway.contracts import build_envelope
 from autodipsik_gateway.files.file_picker import open_file_picker
-from autodipsik_gateway.files.response_writer import write_deepseek_response_json
+from autodipsik_gateway.files.response_writer import write_deepseek_response_json, write_deepseek_workflow_run_json
 from autodipsik_gateway.files.file_store import FileStore
 from autodipsik_gateway.files.serializers import serialize_file_to_base64
 from autodipsik_gateway.files.validators import validate_file
@@ -244,6 +244,107 @@ class GatewayHandlers:
                 },
             )
             return build_envelope("DEEPSEEK_RESPONSE_JSON_SAVED", save_result, correlation_id=correlation_id)
+
+        if message_type == "SAVE_DEEPSEEK_WORKFLOW_RUN_JSON":
+            payload = message.get("payload", {}) or {}
+            selected_file = self.file_store.get_selected_file()
+            if not selected_file:
+              error_payload = build_error_payload(
+                  "GATEWAY_FILE_NOT_SELECTED",
+                  "No selected file is available in FileStore.",
+                  expected="A selected Excel file should exist in FileStore.",
+                  actual="FileStore has no selected file.",
+              )
+              self.logger.emit(
+                  event="python_gateway.deepseek_workflow_run_json.save_failed",
+                  correlation_id=correlation_id,
+                  component="python_gateway",
+                  state="deepseek_workflow_run_json_save_failed",
+                  details={"fileId": payload.get("fileId", "")},
+                  level="ERROR",
+                  expected=error_payload["expected"],
+                  actual=error_payload["actual"],
+                  error=error_payload,
+              )
+              return build_envelope("ERROR", error_payload, correlation_id=correlation_id)
+
+            if payload.get("fileId") != selected_file.file_id:
+                error_payload = build_error_payload(
+                    "GATEWAY_SELECTED_FILE_MISMATCH",
+                    "The payload file id did not match the currently selected file.",
+                    expected="Payload fileId should match FileStore selected fileId.",
+                    actual="Payload fileId did not match selected fileId.",
+                )
+                self.logger.emit(
+                    event="python_gateway.deepseek_workflow_run_json.save_failed",
+                    correlation_id=correlation_id,
+                    component="python_gateway",
+                    state="deepseek_workflow_run_json_save_failed",
+                    details={"fileId": payload.get("fileId", ""), "selectedFileId": selected_file.file_id},
+                    level="ERROR",
+                    expected=error_payload["expected"],
+                    actual=error_payload["actual"],
+                    error=error_payload,
+                )
+                return build_envelope("ERROR", error_payload, correlation_id=correlation_id)
+
+            self.logger.emit(
+                event="python_gateway.deepseek_workflow_run_json.save_requested",
+                correlation_id=correlation_id,
+                component="python_gateway",
+                state="deepseek_workflow_run_json_save_requested",
+                details={
+                    "fileId": selected_file.file_id,
+                    "selectedFileName": selected_file.name,
+                    "selectedFileExtension": selected_file.extension,
+                    "workflowStatus": str((payload.get("workflowRun") or {}).get("status") or ""),
+                    "workflowId": payload.get("workflowId", ""),
+                },
+            )
+
+            try:
+                save_result = write_deepseek_workflow_run_json(selected_file, payload)
+            except Exception as error:  # pragma: no cover - defensive integration branch
+                code, error_message, expected, actual = self._split_error(
+                    str(error),
+                    "DEEPSEEK_WORKFLOW_RUN_JSON_WRITE_FAILED",
+                    "The gateway could not write the DeepSeek workflow run JSON file.",
+                    "Gateway should write a UTF-8 JSON file beside the selected Excel file.",
+                    str(error),
+                )
+                error_payload = build_error_payload(code, error_message, expected=expected, actual=actual)
+                self.logger.emit(
+                    event="python_gateway.deepseek_workflow_run_json.save_failed",
+                    correlation_id=correlation_id,
+                    component="python_gateway",
+                    state="deepseek_workflow_run_json_save_failed",
+                    details={
+                        "fileId": selected_file.file_id,
+                        "selectedFileName": selected_file.name,
+                        "selectedFileExtension": selected_file.extension,
+                    },
+                    level="ERROR",
+                    expected=expected,
+                    actual=actual,
+                    error=error_payload,
+                )
+                return build_envelope("ERROR", error_payload, correlation_id=correlation_id)
+
+            self.logger.emit(
+                event="python_gateway.deepseek_workflow_run_json.save_completed",
+                correlation_id=correlation_id,
+                component="python_gateway",
+                state="deepseek_workflow_run_json_save_completed",
+                details={
+                    "fileId": selected_file.file_id,
+                    "selectedFileName": selected_file.name,
+                    "selectedFileExtension": selected_file.extension,
+                    "outputFileName": save_result["fileName"],
+                    "bytesWritten": save_result["bytesWritten"],
+                    "workflowStatus": str((payload.get("workflowRun") or {}).get("status") or ""),
+                },
+            )
+            return build_envelope("DEEPSEEK_WORKFLOW_RUN_JSON_SAVED", save_result, correlation_id=correlation_id)
 
         return build_envelope(
             "ERROR",

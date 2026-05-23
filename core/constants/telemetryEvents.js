@@ -41,7 +41,10 @@
     GATEWAY_FILE_SELECTED: "extension.gateway.file.selected",
     DEEPSEEK_RESPONSE_JSON_SAVE_STARTED: "extension.gateway.deepseek_response_json.save.started",
     DEEPSEEK_RESPONSE_JSON_SAVE_COMPLETED: "extension.gateway.deepseek_response_json.save.completed",
-    DEEPSEEK_RESPONSE_JSON_SAVE_FAILED: "extension.gateway.deepseek_response_json.save.failed"
+    DEEPSEEK_RESPONSE_JSON_SAVE_FAILED: "extension.gateway.deepseek_response_json.save.failed",
+    DEEPSEEK_WORKFLOW_RUN_JSON_SAVE_STARTED: "extension.gateway.deepseek_workflow_run_json.save.started",
+    DEEPSEEK_WORKFLOW_RUN_JSON_SAVE_COMPLETED: "extension.gateway.deepseek_workflow_run_json.save.completed",
+    DEEPSEEK_WORKFLOW_RUN_JSON_SAVE_FAILED: "extension.gateway.deepseek_workflow_run_json.save.failed"
   };
 
   NewSiteCore.DeepSeekTelemetryEvents = {
@@ -79,6 +82,12 @@
     AUTOMATION_ONE_CLICK_PRECONDITION_FAILED: "automation.one_click.precondition.failed",
     AUTOMATION_ONE_CLICK_COMPLETED: "automation.one_click.completed",
     AUTOMATION_ONE_CLICK_FAILED: "automation.one_click.failed",
+    CONDITIONAL_WORKFLOW_STARTED: "automation.conditional_workflow.started",
+    CONDITIONAL_WORKFLOW_NODE_STARTED: "automation.conditional_workflow.node.started",
+    CONDITIONAL_WORKFLOW_NODE_COMPLETED: "automation.conditional_workflow.node.completed",
+    CONDITIONAL_WORKFLOW_NODE_FAILED: "automation.conditional_workflow.node.failed",
+    CONDITIONAL_WORKFLOW_COMPLETED: "automation.conditional_workflow.completed",
+    CONDITIONAL_WORKFLOW_FAILED: "automation.conditional_workflow.failed",
     DEEPSEEK_TAB_ENSURE_STARTED: "deepseek.tab.ensure.started",
     DEEPSEEK_TAB_ENSURE_COMPLETED: "deepseek.tab.ensure.completed",
     DEEPSEEK_TAB_ENSURE_FAILED: "deepseek.tab.ensure.failed",

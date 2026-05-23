@@ -615,7 +615,30 @@
   function probeComposerReadyToSend(profile, workflowInput, context) {
     const startedAt = context && typeof context.composerReadyStartedAt === "number" ? context.composerReadyStartedAt : Date.now();
     const attempts = context && typeof context.composerReadyAttempts === "number" ? context.composerReadyAttempts : 0;
-    const attachmentEvidence = probeAttachmentState(profile, workflowInput, context);
+    const requireAttachmentReady = !(workflowInput && workflowInput.requireAttachmentReady === false);
+    const attachmentEvidence = requireAttachmentReady
+      ? probeAttachmentState(profile, workflowInput, context)
+      : {
+        attachmentReady: true,
+        blockingCondition: "",
+        attachmentVisible: false,
+        fileNameExpected: "",
+        expectedExtension: "",
+        matchedText: "",
+        matchedByFileName: false,
+        matchedByExtension: false,
+        nearComposer: true,
+        uploadProgressVisible: false,
+        attachmentElementSummary: null,
+        visibleButtonsNearComposer: getVisibleButtonsNearComposer(profile, context),
+        elapsedMs: 0,
+        attempts: 0,
+        composerPresent: Boolean(getComposerRect(profile, context)),
+        attachmentSelectorUsed: profile.selectors.fileAttachedIndicator || "",
+        missingSignals: [],
+        skipped: true,
+        skipReason: "attachment_not_required"
+      };
     const promptEvidence = probePromptState(profile, workflowInput, context);
     const sendButtonEvidence = probeSendButtonState(profile, workflowInput, context);
     const ready = attachmentEvidence.attachmentReady && promptEvidence.promptReady && sendButtonEvidence.sendButtonReady;
@@ -634,6 +657,7 @@
       blockingCondition: blockingCondition,
       attachmentReady: attachmentEvidence.attachmentReady,
       attachmentEvidence: attachmentEvidence,
+      requireAttachmentReady: requireAttachmentReady,
       promptReady: promptEvidence.promptReady,
       promptValueLength: promptEvidence.promptValueLength,
       expectedPromptLength: promptEvidence.expectedPromptLength,
@@ -655,7 +679,14 @@
   function probeSubmitEffect(profile, workflowInput, context) {
     const sendButtonState = probeSendButtonState(profile, workflowInput, context);
     const promptState = probePromptState(profile, workflowInput, context);
-    const attachmentState = probeAttachmentState(profile, workflowInput, context);
+    const requireAttachmentReady = !(workflowInput && workflowInput.requireAttachmentReady === false);
+    const attachmentState = requireAttachmentReady
+      ? probeAttachmentState(profile, workflowInput, context)
+      : {
+        attachmentReady: true,
+        skipped: true,
+        skipReason: "attachment_not_required"
+      };
     const generatingIndicator = queryVisibleElement(profile.selectors.generatingIndicator || "");
     const submitEffectObserved = Boolean(
       generatingIndicator
@@ -670,6 +701,7 @@
       promptStillPresent: promptState.promptReady,
       sendButtonStillReady: sendButtonState.sendButtonReady,
       attachmentStillReady: attachmentState.attachmentReady,
+      requireAttachmentReady: requireAttachmentReady,
       selectedCandidate: sendButtonState.selectedCandidate,
       sendButtonEvidence: Object.assign({}, sendButtonState, { element: undefined })
     };

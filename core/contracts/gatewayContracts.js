@@ -117,10 +117,56 @@
     }
   }
 
+  function validateSaveDeepSeekWorkflowRunJsonRequest(input, context) {
+    ensureObject(input, {
+      contractName: "SaveDeepSeekWorkflowRunJsonRequest",
+      messageType: context && context.messageType ? context.messageType : "",
+      expected: "A save request payload with fileId, traceId, workflowId, and workflowRun.",
+      actual: "The workflow run save request payload was missing or invalid."
+    });
+
+    MessageContracts.requireFields(input, ["fileId", "traceId", "workflowId", "workflowRun"], {
+      contractName: "SaveDeepSeekWorkflowRunJsonRequest",
+      messageType: context && context.messageType ? context.messageType : ""
+    });
+
+    ensureObject(input.workflowRun, {
+      contractName: "SaveDeepSeekWorkflowRunRequest.workflowRun",
+      messageType: context && context.messageType ? context.messageType : "",
+      expected: "workflowRun should be an object containing the conditional workflow execution result.",
+      actual: "workflowRun was missing or invalid."
+    });
+  }
+
+  function validateSaveDeepSeekWorkflowRunJsonResponse(input, context) {
+    ensureObject(input, {
+      contractName: "SaveDeepSeekWorkflowRunJsonResponse",
+      messageType: context && context.messageType ? context.messageType : "",
+      expected: "A gateway workflow run save response with output metadata.",
+      actual: "The workflow run save response payload was missing or invalid."
+    });
+
+    MessageContracts.requireFields(input, ["status", "outputPath", "fileName", "bytesWritten"], {
+      contractName: "SaveDeepSeekWorkflowRunJsonResponse",
+      messageType: context && context.messageType ? context.messageType : ""
+    });
+
+    if (typeof input.bytesWritten !== "number" || input.bytesWritten <= 0) {
+      throw Errors.createError("CONTRACT_VALIDATION_FAILED", "bytesWritten must be a positive number.", {
+        expected: "workflow run save response bytesWritten should be greater than 0.",
+        actual: "bytesWritten was " + String(input.bytesWritten) + ".",
+        messageType: context && context.messageType ? context.messageType : "",
+        probableCause: "core/contracts/gatewayContracts.js"
+      });
+    }
+  }
+
   NewSiteCore.GatewayContracts = {
     validateDeepSeekCapturedResponse: validateDeepSeekCapturedResponse,
     validateFileContentRequest: validateFileContentRequest,
     validateSaveDeepSeekResponseJsonRequest: validateSaveDeepSeekResponseJsonRequest,
-    validateSaveDeepSeekResponseJsonResponse: validateSaveDeepSeekResponseJsonResponse
+    validateSaveDeepSeekResponseJsonResponse: validateSaveDeepSeekResponseJsonResponse,
+    validateSaveDeepSeekWorkflowRunJsonRequest: validateSaveDeepSeekWorkflowRunJsonRequest,
+    validateSaveDeepSeekWorkflowRunJsonResponse: validateSaveDeepSeekWorkflowRunJsonResponse
   };
 })(globalThis);

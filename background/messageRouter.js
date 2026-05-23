@@ -29,6 +29,7 @@
   handlers[MESSAGE_TYPES.DEEPSEEK_TAB_ENSURE] = NewSiteBackground.TabHandlers.ensureDeepSeekTab;
   handlers[MESSAGE_TYPES.RUN_AUTOMATION] = NewSiteBackground.AutomationHandlers.runAutomation;
   handlers[MESSAGE_TYPES.AUTOMATION_ONE_CLICK_RUN] = NewSiteBackground.AutomationHandlers.runOneClick;
+  handlers[MESSAGE_TYPES.CONDITIONAL_WORKFLOW_RUN] = NewSiteBackground.AutomationHandlers.runConditionalWorkflow;
   handlers[MESSAGE_TYPES.GATEWAY_STATUS_GET] = NewSiteBackground.GatewayHandlers.getStatus;
   handlers[MESSAGE_TYPES.GATEWAY_CONNECT] = NewSiteBackground.GatewayHandlers.connect;
   handlers[MESSAGE_TYPES.GATEWAY_DISCONNECT] = NewSiteBackground.GatewayHandlers.disconnect;

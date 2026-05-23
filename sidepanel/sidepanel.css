@@ -222,6 +222,12 @@ select {
   border-top: 0;
 }
 
+.stack-blocks {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
 pre {
   margin: 0;
   white-space: pre-wrap;

@@ -712,8 +712,11 @@
     const profile = options.profile;
     const input = options.input || {};
     const traceId = options.traceId;
+    const attachFile = input.attachFile !== false;
     const workflowInput = {
       dryRun: Boolean(input.dryRun),
+      attachFile: attachFile,
+      requireAttachmentReady: attachFile,
       filePath: input.filePath || "",
       promptText: input.promptText || "",
       waitForResponse: Boolean(input.waitForResponse),
@@ -733,7 +736,10 @@
             workflowInput.filePayload && workflowInput.filePayload.name
           );
           context.promptLength = workflowInput.promptText.length;
-          const missingSelectors = requiredSelectorsForMainWorkflow.filter(function missingRequired(key) {
+          const requiredSelectors = requiredSelectorsForMainWorkflow.filter(function onlyRequired(key) {
+            return workflowInput.attachFile || key !== "fileInput";
+          });
+          const missingSelectors = requiredSelectors.filter(function missingRequired(key) {
             return !profile.selectors[key];
           });
           if (missingSelectors.length) {
@@ -754,7 +760,7 @@
               actual: "No prompt text was supplied."
             });
           }
-          if (!workflowInput.dryRun && !workflowInput.filePayload) {
+          if (!workflowInput.dryRun && workflowInput.attachFile && !workflowInput.filePayload) {
             throw buildWorkflowError("FILE_PAYLOAD_REQUIRED", "File payload is required for upload.", {
               profile: profile,
               expected: "A serialized file payload from the Python gateway should be available.",
@@ -834,6 +840,21 @@
         description: "Attach the Excel file through the DeepSeek file input",
         expected: "The file input should accept the Excel file and expose it to the page.",
         run: async function runStep(context) {
+          if (workflowInput.dryRun) {
+            return {
+              skipped: true,
+              reason: "dry_run"
+            };
+          }
+
+          if (!workflowInput.attachFile) {
+            return {
+              skipped: true,
+              reason: "attach_file_disabled",
+              actual: "The workflow explicitly skipped file attachment for this prompt turn."
+            };
+          }
+
           const fileInputMatch = await waitForElement({
             selectorName: "fileInput",
             selector: profile.selectors.fileInput,
@@ -857,13 +878,6 @@
             selectorValue: fileInputMatch.selectorValue,
             foundBy: fileInputMatch.foundBy
           });
-
-          if (workflowInput.dryRun) {
-            return {
-              skipped: true,
-              reason: "dry_run"
-            };
-          }
 
           await emitWorkflowEvent(context, TELEMETRY_EVENTS.DEEPSEEK_FILE_ATTACH_STARTED, "info", "File attachment started", {
             selectorName: fileInputMatch.selectorName,
@@ -896,6 +910,14 @@
             return {
               skipped: true,
               reason: "dry_run"
+            };
+          }
+
+          if (!workflowInput.attachFile) {
+            return {
+              skipped: true,
+              reason: "attach_file_disabled",
+              actual: "Attachment readiness was skipped because this prompt turn does not require a file."
             };
           }
 

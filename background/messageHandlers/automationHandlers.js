@@ -25,8 +25,13 @@
     return NewSiteBackground.DeepSeekOneClickWorkflow.run(message);
   }
 
+  async function runConditionalWorkflow(message) {
+    return NewSiteBackground.DeepSeekConditionalWorkflow.run(message);
+  }
+
   NewSiteBackground.AutomationHandlers = {
     runAutomation: runAutomation,
-    runOneClick: runOneClick
+    runOneClick: runOneClick,
+    runConditionalWorkflow: runConditionalWorkflow
   };
 })(globalThis);

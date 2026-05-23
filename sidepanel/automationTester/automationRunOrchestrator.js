@@ -17,7 +17,20 @@
     });
   }
 
+  async function runConditionalWorkflow(input) {
+    return messaging.sendMessage({
+      type: MESSAGE_TYPES.CONDITIONAL_WORKFLOW_RUN,
+      input: {
+        definition: input.definition || null,
+        autoConnectGateway: true,
+        autoOpenDeepSeek: true,
+        autoSelectFileIfMissing: true
+      }
+    });
+  }
+
   NewSiteSidepanel.AutomationRunOrchestrator = {
-    runOneClick: runOneClick
+    runOneClick: runOneClick,
+    runConditionalWorkflow: runConditionalWorkflow
   };
 })(globalThis);

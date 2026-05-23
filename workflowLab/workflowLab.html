@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workflow Lab</title>
+  <link rel="stylesheet" href="workflowLab.css">
+</head>
+<body>
+  <div class="lab-shell">
+    <header class="lab-header">
+      <div>
+        <h1>Workflow Lab</h1>
+        <p class="subtitle">Full-window conditional workflow runner for the DeepSeek MVP.</p>
+      </div>
+      <div class="header-metrics">
+        <div><span>Gateway</span><strong id="workflow-lab-gateway-state">Loading...</strong></div>
+        <div><span>Selected file</span><strong id="workflow-lab-selected-file">Loading...</strong></div>
+        <div><span>Status</span><strong id="workflow-lab-status">Idle</strong></div>
+      </div>
+    </header>
+
+    <main id="workflow-lab-root"></main>
+  </div>
+
+  <script src="../core/config.js"></script>
+  <script src="../core/constants/messageTypes.js"></script>
+  <script src="../core/constants/storageKeys.js"></script>
+  <script src="../core/constants/telemetryEvents.js"></script>
+  <script src="../core/constants.js"></script>
+  <script src="../core/errors.js"></script>
+  <script src="../sites/deepseek/config.js"></script>
+  <script src="workflowLab.store.js"></script>
+  <script src="workflowLab.render.js"></script>
+  <script src="workflowLab.controller.js"></script>
+  <script src="bootstrap.js"></script>
+</body>
+</html>
