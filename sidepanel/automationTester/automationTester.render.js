@@ -40,11 +40,9 @@
   function render(root) {
     const runtime = store.runtimeStatus || {};
     const pageState = store.pageState || {};
-    const workflow = store.workflowResult || {};
     const gatewayStatus = store.gatewayStatus || {};
     const selectedFile = store.selectedFile || gatewayStatus.selectedFile || null;
-    const lastRunSummary = store.lastRunSummary || workflow || {};
-    const responseJsonSave = lastRunSummary.responseJsonSave || null;
+    const lastRunSummary = store.lastRunSummary || {};
     const conditionalWorkflowResult = store.conditionalWorkflowResult || {};
     const conditionalWorkflowRun = conditionalWorkflowResult.workflowRun || {};
     const conditionalWorkflowVariables = conditionalWorkflowRun.variables || {};
@@ -55,24 +53,18 @@
     root.innerHTML = [
       "<div class='card'>",
       "<h2>Automation Tester</h2>",
-      "<p class='field-help'>Run the DeepSeek workflow end to end from one button. The extension will connect the gateway, ensure the DeepSeek tab is ready, run preflight, and then execute the upload.</p>",
+      "<p class='field-help'>Run conditional DeepSeek workflows from saved JSON drafts. The extension will connect the gateway, ensure the DeepSeek tab is ready, and execute the workflow definition you provide.</p>",
       "<div class='inline-metrics'>",
       "<div class='metric-card'><span>Gateway</span><strong>" + renderStatusPill(gatewayStatus) + "</strong></div>",
       "<div class='metric-card'><span>Selected file</span><strong>" + escapeHtml(selectedFile ? selectedFile.name : "None") + "</strong></div>",
       "<div class='metric-card'><span>Page state</span><strong>" + escapeHtml(pageState.pageState ? pageState.pageState.state : "Unknown") + "</strong></div>",
-      "<div class='metric-card'><span>Workflow</span><strong>" + escapeHtml(workflow.workflowId || "Idle") + "</strong></div>",
+      "<div class='metric-card'><span>Workflow</span><strong>" + escapeHtml(conditionalWorkflowResult.workflowId || "Idle") + "</strong></div>",
       "</div>",
       "<div class='button-row'>",
       "<button id='automation-select-file'>Select Excel File</button>",
-      "<button class='primary' id='run-automation'>Run automation</button>",
       "<button id='open-workflow-lab'>Open Workflow Lab</button>",
       "<button id='automation-export-causal-report'>Export Causal Report</button>",
       "</div>",
-      "</div>",
-      "<div class='card'>",
-      "<h3>Prompt</h3>",
-      "<label>Prompt text</label>",
-      "<textarea id='automation-prompt-text' rows='4' placeholder='Describe what DeepSeek should do with the attached file'>" + escapeHtml(store.promptText || "") + "</textarea>",
       "</div>",
       "<div class='card'>",
       "<h3>Conditional Workflow MVP</h3>",
@@ -124,8 +116,8 @@
       "<div class='metric-card'><span>Workflow ID</span><strong>" + escapeHtml(lastRunSummary.workflowId || "None") + "</strong></div>",
       "<div class='metric-card'><span>Last error</span><strong>" + escapeHtml(error ? error.message : "None") + "</strong></div>",
       "</div>",
-      (responseJsonSave
-        ? "<p class='field-help'>DeepSeek response JSON saved: " + escapeHtml(responseJsonSave.fileName || "Unknown") + "</p>"
+      (workflowRunJsonSave
+        ? "<p class='field-help'>Workflow run JSON saved: " + escapeHtml(workflowRunJsonSave.fileName || "Unknown") + "</p>"
         : ""),
       "</div>",
       "<div class='card'>",
@@ -138,9 +130,9 @@
       "</div>",
       "</div>",
       "<div class='card'>",
-      "<h3>Step Timeline</h3>",
-      (workflow.timeline && workflow.timeline.length ? workflow.timeline.map(function mapStep(step) {
-        return "<div class='timeline-item'><strong>" + escapeHtml(step.stepName) + "</strong><div>" + escapeHtml(step.status) + "</div></div>";
+      "<h3>Execution Timeline</h3>",
+      ((conditionalWorkflowRun.turns || []).length ? (conditionalWorkflowRun.turns || []).map(function mapTurn(turn, index) {
+        return "<div class='timeline-item'><strong>Turn " + escapeHtml(String(index + 1)) + "</strong><div>" + escapeHtml(turn.promptNodeId || turn.nodeId || turn.turnId || "Unknown") + "</div></div>";
       }).join("") : "<div class='muted'>No workflow executed yet.</div>"),
       "</div>",
       "<div class='card'>",
@@ -151,7 +143,6 @@
       "<button id='automation-disconnect-gateway'>Disconnect Gateway</button>",
       "<button id='open-target-site'>Open DeepSeek</button>",
       "<button id='detect-page-state'>Detect page state</button>",
-      "<button id='run-dry-run'>Run dry run</button>",
       "</div>",
       "</div>"
     ].join("");

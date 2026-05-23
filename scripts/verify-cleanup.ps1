@@ -147,6 +147,28 @@ if ($LASTEXITCODE -gt 1) {
   Add-Pass "No orphan deepseekUpload references remain in active code"
 }
 
+$legacySidepanelUiMatches = @(git grep -n -E 'automation-prompt-text|run-automation|run-dry-run' -- sidepanel 2>$null)
+if ($LASTEXITCODE -gt 1) {
+  Add-Failure "git grep failed while checking removed sidepanel legacy UI ids"
+} elseif ($legacySidepanelUiMatches.Count -gt 0) {
+  foreach ($legacyMatch in $legacySidepanelUiMatches) {
+    Add-Failure "Removed sidepanel legacy UI reference detected: $legacyMatch"
+  }
+} else {
+  Add-Pass "No removed sidepanel legacy UI references remain"
+}
+
+$legacyOneClickRouteMatches = @(git grep -n -E 'AUTOMATION_ONE_CLICK_RUN|DeepSeekOneClickWorkflow|runOneClick|automation\.one_click' -- background core sidepanel workflowLab manifest.json 2>$null)
+if ($LASTEXITCODE -gt 1) {
+  Add-Failure "git grep failed while checking removed legacy one-click route references"
+} elseif ($legacyOneClickRouteMatches.Count -gt 0) {
+  foreach ($legacyMatch in $legacyOneClickRouteMatches) {
+    Add-Failure "Removed legacy one-click route reference detected: $legacyMatch"
+  }
+} else {
+  Add-Pass "No removed legacy one-click route references remain in active runtime files"
+}
+
 if ($failures.Count -gt 0) {
   Write-Host ""
   Write-Host "Cleanup verification failed." -ForegroundColor Red

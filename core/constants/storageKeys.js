@@ -5,6 +5,7 @@
     SITE_PROFILE: "newsite_site_profile",
     EVENT_BUFFER: "telemetry_buffer",
     LAST_WORKFLOW: "last_workflow",
+    CONDITIONAL_WORKFLOW_DRAFT: "conditional_workflow_draft",
     SELECTOR_HEALTH: "selector_health",
     PAGE_STATE_HISTORY: "page_state_history",
     ERROR_LOG: "error_log",

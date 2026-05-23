@@ -43,31 +43,68 @@ Use this checklist after each refactor phase. The goal is to confirm that modula
 - [ ] Confirm selector testing still works for a single selector.
 - [ ] Confirm `Test All` still returns selector health entries.
 
-## Automation Workflows
+## Conditional Workflow Draft Persistence
 
-### `AUTOMATION_ONE_CLICK_RUN`
+### Automation Tester
 
-- [ ] Enter a prompt and run the one-click flow.
-- [ ] If no file is selected, confirm the file picker opens when auto-select is enabled.
-- [ ] Confirm the flow connects to the gateway when needed.
-- [ ] Confirm the flow ensures the DeepSeek tab is ready.
-- [ ] Confirm the flow runs preflight when enabled.
-- [ ] Confirm the real run attaches the file.
-- [ ] Confirm the prompt is inserted.
-- [ ] Confirm the send button is found.
-- [ ] Confirm the send button is clicked on non-dry runs.
-- [ ] Confirm the workflow waits for the final DeepSeek assistant response after submit.
-- [ ] Confirm the final response is captured only after the visible text stabilizes.
-- [ ] Confirm a `.deepseek-response.<timestamp>.json` file is created beside the selected Excel file.
-- [ ] Confirm the side panel shows `DeepSeek response JSON saved: <filename>` after success.
+- [ ] Open `Automation Tester` and confirm the conditional workflow textarea renders.
+- [ ] Paste valid JSON into the conditional workflow textarea.
+- [ ] Close and reopen the side panel and confirm the exact JSON text is preserved.
+- [ ] Reload the extension in `chrome://extensions` and confirm the same JSON text is preserved.
+- [ ] Fully close Chrome, reopen it, and confirm the same JSON text is preserved.
+- [ ] Paste intentionally invalid JSON and confirm it is still preserved after closing and reopening the side panel.
+- [ ] Click `Load sample workflow` and confirm the sample JSON remains after closing and reopening the side panel.
 
-### `RUN_AUTOMATION`
+### Workflow Lab
 
-- [ ] Run a dry-run and confirm it does not require a file payload.
-- [ ] Run a real automation and confirm it still requires a gateway-selected Excel file.
-- [ ] Confirm the response still includes workflow details and errors in the same shape.
-- [ ] Confirm dry run skips response capture with reason `dry_run`.
-- [ ] Confirm real automation includes `wait_for_deepseek_response_complete` in the workflow results when `waitForResponse` is true.
+- [ ] Open `Workflow Lab` from the side panel and confirm the conditional workflow textarea renders.
+- [ ] Confirm Workflow Lab loads the same persisted draft shown in Automation Tester.
+- [ ] Edit the Workflow Lab draft and close the window.
+- [ ] Reopen Workflow Lab and confirm the exact edited text is preserved.
+- [ ] Reload the extension and confirm Workflow Lab still restores the same draft.
+- [ ] Paste intentionally invalid JSON in Workflow Lab and confirm it is preserved after close and reopen.
+- [ ] Click `Load sample workflow` in Workflow Lab and confirm the sample JSON remains after reopening the window.
+
+### Cross-Surface Persistence
+
+- [ ] Save a unique draft in Automation Tester and then open Workflow Lab.
+- [ ] Confirm Workflow Lab shows the same draft text.
+- [ ] Change the draft in Workflow Lab, close it, and reopen the side panel.
+- [ ] Confirm Automation Tester shows the updated Workflow Lab draft.
+- [ ] Confirm both surfaces use the same persisted storage-backed draft instead of separate keys.
+
+## Conditional-Only UI
+
+- [ ] Confirm Automation Tester does not show the legacy prompt textarea.
+- [ ] Confirm Automation Tester does not show a `Run automation` button.
+- [ ] Confirm Automation Tester does not show a `Run dry run` button.
+- [ ] Confirm Automation Tester still shows:
+  - [ ] `Select Excel File`
+  - [ ] `Open Workflow Lab`
+  - [ ] `Export Causal Report`
+  - [ ] `Load sample workflow`
+  - [ ] `Run conditional workflow`
+- [ ] Confirm the side panel console does not show null-binding errors after opening the Automation Tester tab.
+
+## Conditional Workflow Execution
+
+- [ ] Load the sample conditional workflow from Automation Tester.
+- [ ] Select an Excel file when the workflow includes a prompt node with `attachFile: true`.
+- [ ] Run the conditional workflow and confirm the result area shows:
+  - [ ] status
+  - [ ] trace id
+  - [ ] workflow id
+  - [ ] visited nodes
+  - [ ] variables
+  - [ ] decisions
+- [ ] Confirm Workflow Lab can also run the same conditional workflow successfully.
+- [ ] Confirm workflow run JSON can still be saved through the gateway when a selected file is present.
+
+## Internal Prompt Turn Primitive
+
+- [ ] Confirm `RUN_AUTOMATION` is still treated as an internal low-level primitive for conditional prompt nodes.
+- [ ] Confirm no user-facing UI depends on directly invoking `RUN_AUTOMATION`.
+- [ ] Confirm conditional prompt nodes still execute through `DeepSeekPromptTurnRunner`.
 
 ## Diagnostics
 
@@ -83,8 +120,8 @@ Use this checklist after each refactor phase. The goal is to confirm that modula
 
 ## Failure Scenarios
 
-- [ ] Try running automation without a prompt and confirm a structured validation error is returned.
-- [ ] Try running automation without selecting a file and confirm the expected error still appears.
+- [ ] Try running a conditional workflow with invalid JSON and confirm a parse error appears without losing the draft text.
+- [ ] Try running a file-attaching conditional workflow without selecting a file and confirm the expected error still appears.
 - [ ] Temporarily disconnect the gateway and confirm connection failures remain structured.
 - [ ] Force a DeepSeek content-script failure and confirm the error still includes:
   - [ ] `failedStage`
@@ -107,6 +144,9 @@ Use this checklist after each refactor phase. The goal is to confirm that modula
 Do not advance to the next refactor phase unless:
 
 - [ ] extension load is healthy
-- [ ] one-click flow still works or fails with the same structured diagnostics
+- [ ] conditional workflow draft persistence is healthy in Automation Tester
+- [ ] conditional workflow draft persistence is healthy in Workflow Lab
+- [ ] conditional-only UI is confirmed
+- [ ] conditional workflow execution smoke test passes
 - [ ] DeepSeek content ping still works
 - [ ] diagnostics export still works

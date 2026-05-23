@@ -3,6 +3,7 @@
   const store = WorkflowLab.Store.state;
   const render = WorkflowLab.Render.render;
   const MESSAGE_TYPES = globalScope.NewSiteCore.MESSAGE_TYPES;
+  const draftStorage = globalScope.NewSiteCore && globalScope.NewSiteCore.ConditionalWorkflowDraftStorage;
   const deepSeekConfig = globalScope.DeepSeekAutomation.DEEPSEEK_CONFIG;
 
   const SAMPLE_CONDITIONAL_WORKFLOW = {
@@ -71,10 +72,63 @@
   };
 
   let rootNode;
+  let conditionalWorkflowDraftSaveTimer = null;
+  let conditionalWorkflowDraftSessionVersion = 0;
 
   function rerender() {
     render(rootNode);
     bindEvents();
+  }
+
+  async function saveConditionalWorkflowDraft(text) {
+    if (!draftStorage || typeof draftStorage.saveDraft !== "function") {
+      return false;
+    }
+
+    try {
+      return await draftStorage.saveDraft(text);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function scheduleConditionalWorkflowDraftSave(text) {
+    if (conditionalWorkflowDraftSaveTimer) {
+      clearTimeout(conditionalWorkflowDraftSaveTimer);
+    }
+
+    conditionalWorkflowDraftSaveTimer = setTimeout(function persistDraft() {
+      conditionalWorkflowDraftSaveTimer = null;
+      saveConditionalWorkflowDraft(text).catch(function noop() {});
+    }, 250);
+  }
+
+  async function flushConditionalWorkflowDraftSave(text) {
+    if (conditionalWorkflowDraftSaveTimer) {
+      clearTimeout(conditionalWorkflowDraftSaveTimer);
+      conditionalWorkflowDraftSaveTimer = null;
+    }
+    return saveConditionalWorkflowDraft(text);
+  }
+
+  async function loadConditionalWorkflowDraft() {
+    if (!draftStorage || typeof draftStorage.loadDraft !== "function") {
+      return;
+    }
+
+    const loadVersion = conditionalWorkflowDraftSessionVersion;
+    const loadedDraft = await draftStorage.loadDraft();
+
+    if (conditionalWorkflowDraftSessionVersion !== loadVersion) {
+      return;
+    }
+
+    if (typeof loadedDraft !== "string" || loadedDraft === store.conditionalWorkflowText) {
+      return;
+    }
+
+    store.conditionalWorkflowText = loadedDraft;
+    rerender();
   }
 
   async function sendMessage(message) {
@@ -104,13 +158,16 @@
 
   function loadSampleWorkflow() {
     store.conditionalWorkflowText = JSON.stringify(SAMPLE_CONDITIONAL_WORKFLOW, null, 2);
+    conditionalWorkflowDraftSessionVersion += 1;
     store.conditionalWorkflowParseError = "";
     rerender();
+    flushConditionalWorkflowDraftSave(store.conditionalWorkflowText).catch(function noop() {});
   }
 
   async function runConditionalWorkflow() {
     const jsonInput = document.getElementById("workflow-lab-json");
     store.conditionalWorkflowText = jsonInput ? jsonInput.value : store.conditionalWorkflowText;
+    await flushConditionalWorkflowDraftSave(store.conditionalWorkflowText);
 
     if (!store.conditionalWorkflowText.trim()) {
       store.conditionalWorkflowParseError = "Conditional workflow JSON is required.";
@@ -160,6 +217,11 @@
     document.getElementById("workflow-lab-connect-gateway").onclick = connectGateway;
     document.getElementById("workflow-lab-select-file").onclick = selectExcelFile;
     document.getElementById("workflow-lab-open-deepseek").onclick = openDeepSeek;
+    document.getElementById("workflow-lab-json").addEventListener("input", function onInput(event) {
+      conditionalWorkflowDraftSessionVersion += 1;
+      store.conditionalWorkflowText = event.target.value;
+      scheduleConditionalWorkflowDraftSave(store.conditionalWorkflowText);
+    });
     document.getElementById("workflow-lab-load-sample").onclick = loadSampleWorkflow;
     document.getElementById("workflow-lab-run").onclick = function onRun() {
       return runConditionalWorkflow();
@@ -169,6 +231,7 @@
   function mount(root) {
     rootNode = root;
     rerender();
+    loadConditionalWorkflowDraft().catch(function noop() {});
     refreshGatewayStatus().catch(function noop() {});
   }
 

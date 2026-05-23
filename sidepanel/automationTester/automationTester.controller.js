@@ -6,6 +6,7 @@
   const Toast = NewSiteSidepanel.Toast;
   const orchestrator = NewSiteSidepanel.AutomationRunOrchestrator;
   const MESSAGE_TYPES = globalScope.NewSiteCore.MESSAGE_TYPES;
+  const draftStorage = globalScope.NewSiteCore && globalScope.NewSiteCore.ConditionalWorkflowDraftStorage;
   const deepSeekConfig = globalScope.DeepSeekAutomation.DEEPSEEK_CONFIG;
   const SAMPLE_CONDITIONAL_WORKFLOW = {
     flowVersion: 1,
@@ -73,10 +74,63 @@
   };
 
   let rootNode;
+  let conditionalWorkflowDraftSaveTimer = null;
+  let conditionalWorkflowDraftSessionVersion = 0;
 
   function rerender() {
     render(rootNode);
     bindEvents();
+  }
+
+  async function saveConditionalWorkflowDraft(text) {
+    if (!draftStorage || typeof draftStorage.saveDraft !== "function") {
+      return false;
+    }
+
+    try {
+      return await draftStorage.saveDraft(text);
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function scheduleConditionalWorkflowDraftSave(text) {
+    if (conditionalWorkflowDraftSaveTimer) {
+      clearTimeout(conditionalWorkflowDraftSaveTimer);
+    }
+
+    conditionalWorkflowDraftSaveTimer = setTimeout(function persistDraft() {
+      conditionalWorkflowDraftSaveTimer = null;
+      saveConditionalWorkflowDraft(text).catch(function noop() {});
+    }, 250);
+  }
+
+  async function flushConditionalWorkflowDraftSave(text) {
+    if (conditionalWorkflowDraftSaveTimer) {
+      clearTimeout(conditionalWorkflowDraftSaveTimer);
+      conditionalWorkflowDraftSaveTimer = null;
+    }
+    return saveConditionalWorkflowDraft(text);
+  }
+
+  async function loadConditionalWorkflowDraft() {
+    if (!draftStorage || typeof draftStorage.loadDraft !== "function") {
+      return;
+    }
+
+    const loadVersion = conditionalWorkflowDraftSessionVersion;
+    const loadedDraft = await draftStorage.loadDraft();
+
+    if (conditionalWorkflowDraftSessionVersion !== loadVersion) {
+      return;
+    }
+
+    if (typeof loadedDraft !== "string" || loadedDraft === store.conditionalWorkflowText) {
+      return;
+    }
+
+    store.conditionalWorkflowText = loadedDraft;
+    rerender();
   }
 
   function applyResponse(response) {
@@ -188,9 +242,7 @@
   }
 
   function collectAutomationInput() {
-    const promptInput = document.getElementById("automation-prompt-text");
     const conditionalWorkflowInput = document.getElementById("conditional-workflow-json");
-    store.promptText = promptInput ? promptInput.value.trim() : "";
     store.conditionalWorkflowText = conditionalWorkflowInput ? conditionalWorkflowInput.value : store.conditionalWorkflowText;
 
     const selectedFile = store.selectedFile
@@ -198,7 +250,6 @@
       || null;
 
     return {
-      promptText: store.promptText,
       selectedFile: selectedFile,
       fileId: selectedFile ? selectedFile.fileId : "",
       fileName: selectedFile ? selectedFile.name : "",
@@ -207,76 +258,18 @@
     };
   }
 
-  async function runAutomation(dryRun) {
-    const collected = collectAutomationInput();
-    if (!collected.promptText) {
-      Toast.showToast("Prompt text is required.");
-      return;
-    }
-    if (!dryRun && !collected.fileId) {
-      Toast.showToast("Select an Excel file before running automation.");
-      return;
-    }
-
-    store.isRunningAutomation = true;
-    const response = await messaging.sendMessage({
-      type: MESSAGE_TYPES.RUN_AUTOMATION,
-      input: Object.assign({}, collected, {
-        dryRun: dryRun,
-        useGatewaySelectedFile: true
-      })
-    });
-    store.isRunningAutomation = false;
-    store.workflowResult = response;
-    store.lastRunSummary = response;
-    store.lastError = response.error || null;
-    if (response.gatewayStatus) {
-      store.gatewayStatus = response.gatewayStatus;
-      store.selectedFile = response.gatewayStatus.selectedFile || store.selectedFile;
-    }
-    rerender();
-    Toast.showToast(dryRun ? "Dry run executed." : "Automation executed.");
-  }
-
-  async function runAutomationOneClick() {
-    const collected = collectAutomationInput();
-    if (!collected.promptText) {
-      Toast.showToast("Prompt text is required.");
-      return;
-    }
-
-    store.isRunningAutomation = true;
-    const response = await orchestrator.runOneClick({
-      promptText: collected.promptText
-    });
-    store.isRunningAutomation = false;
-    store.workflowResult = response.automationResult || response;
-    store.lastRunSummary = response;
-    store.lastError = response.error || null;
-    store.pageState = response.pageState || store.pageState;
-    if (response.gatewayStatus) {
-      store.gatewayStatus = response.gatewayStatus;
-      store.selectedFile = response.gatewayStatus.selectedFile || store.selectedFile;
-    }
-    rerender();
-    Toast.showToast(
-      response.status === "completed"
-        ? (response.responseJsonSave && response.responseJsonSave.fileName
-          ? "DeepSeek response JSON saved: " + response.responseJsonSave.fileName
-          : "Automation executed.")
-        : (response.error && response.error.message ? response.error.message : "Automation failed.")
-    );
-  }
-
   function loadSampleConditionalWorkflow() {
     store.conditionalWorkflowText = JSON.stringify(SAMPLE_CONDITIONAL_WORKFLOW, null, 2);
+    conditionalWorkflowDraftSessionVersion += 1;
     store.conditionalWorkflowParseError = "";
     rerender();
+    flushConditionalWorkflowDraftSave(store.conditionalWorkflowText).catch(function noop() {});
     Toast.showToast("Sample conditional workflow loaded.");
   }
 
   async function runConditionalWorkflow() {
     const collected = collectAutomationInput();
+    await flushConditionalWorkflowDraftSave(collected.conditionalWorkflowText);
     if (!collected.conditionalWorkflowText.trim()) {
       store.conditionalWorkflowParseError = "Conditional workflow JSON is required.";
       rerender();
@@ -338,12 +331,11 @@
       });
     };
     document.getElementById("detect-page-state").onclick = detectPageState;
-    document.getElementById("run-dry-run").onclick = function onDryRun() {
-      runAutomation(true);
-    };
-    document.getElementById("run-automation").onclick = function onRun() {
-      runAutomationOneClick();
-    };
+    document.getElementById("conditional-workflow-json").addEventListener("input", function onInput(event) {
+      conditionalWorkflowDraftSessionVersion += 1;
+      store.conditionalWorkflowText = event.target.value;
+      scheduleConditionalWorkflowDraftSave(store.conditionalWorkflowText);
+    });
     document.getElementById("load-sample-conditional-workflow").onclick = loadSampleConditionalWorkflow;
     document.getElementById("run-conditional-workflow").onclick = function onRunConditionalWorkflow() {
       runConditionalWorkflow();
@@ -353,6 +345,7 @@
   function mount(root) {
     rootNode = root;
     rerender();
+    loadConditionalWorkflowDraft().catch(function noop() {});
     refreshRuntimeStatus().catch(function noop() {});
     refreshGatewayStatus().catch(function noop() {});
   }

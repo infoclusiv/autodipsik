@@ -21,17 +21,12 @@
     return result;
   }
 
-  async function runOneClick(message) {
-    return NewSiteBackground.DeepSeekOneClickWorkflow.run(message);
-  }
-
   async function runConditionalWorkflow(message) {
     return NewSiteBackground.DeepSeekConditionalWorkflow.run(message);
   }
 
   NewSiteBackground.AutomationHandlers = {
     runAutomation: runAutomation,
-    runOneClick: runOneClick,
     runConditionalWorkflow: runConditionalWorkflow
   };
 })(globalThis);
