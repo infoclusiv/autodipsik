@@ -33,6 +33,19 @@
     return NewSiteBackground.GatewayFileService.selectFile(message.traceId);
   }
 
+  async function selectFiles(message) {
+    await NewSiteBackground.GatewayFileService.ensureConnected();
+    return NewSiteBackground.GatewayFileService.selectFiles(message.traceId);
+  }
+
+  async function selectFileById(message) {
+    await NewSiteBackground.GatewayFileService.ensureConnected();
+    return NewSiteBackground.GatewayFileService.selectFileById(
+      message.traceId,
+      message && message.payload ? message.payload.fileId : ""
+    );
+  }
+
   async function executeUpload(message) {
     await NewSiteBackground.GatewayFileService.ensureConnected();
     return NewSiteBackground.GatewayFileService.executeUpload(message.traceId);
@@ -43,6 +56,8 @@
     connect: connect,
     disconnect: disconnect,
     selectFile: selectFile,
+    selectFiles: selectFiles,
+    selectFileById: selectFileById,
     executeUpload: executeUpload
   };
 })(globalThis);

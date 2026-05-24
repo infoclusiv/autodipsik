@@ -19,6 +19,7 @@
     state: "disconnected",
     lastError: null,
     selectedFile: null,
+    selectedFiles: [],
     serverCapabilities: [],
     updatedAt: new Date().toISOString()
   };
@@ -35,7 +36,28 @@
     if (Object.prototype.hasOwnProperty.call(currentStatus, "selectedFile")) {
       await Storage.setValue(STORAGE_KEYS.GATEWAY_SELECTED_FILE, currentStatus.selectedFile || null);
     }
+    if (Object.prototype.hasOwnProperty.call(currentStatus, "selectedFiles")) {
+      await Storage.setValue(STORAGE_KEYS.GATEWAY_SELECTED_FILES, currentStatus.selectedFiles || []);
+    }
     return cloneStatus();
+  }
+
+  function reconcileSelectedFiles(selectedFile, existingSelectedFiles) {
+    if (!selectedFile || !selectedFile.fileId) {
+      return [];
+    }
+
+    const selectedFiles = Array.isArray(existingSelectedFiles) ? existingSelectedFiles.slice() : [];
+    const existingIndex = selectedFiles.findIndex(function findSelectedFile(entry) {
+      return entry && entry.fileId === selectedFile.fileId;
+    });
+
+    if (existingIndex >= 0) {
+      selectedFiles[existingIndex] = Object.assign({}, selectedFiles[existingIndex], selectedFile);
+      return selectedFiles;
+    }
+
+    return [selectedFile];
   }
 
   async function emitGatewayEvent(eventName, message, data, level) {
@@ -144,8 +166,28 @@
     }
 
     if (envelope.type === protocol.GATEWAY_MESSAGE_TYPES.FILE_SELECTED) {
-      await persistStatus({ selectedFile: envelope.payload || null });
+      const nextSelectedFile = envelope.payload || null;
+      await persistStatus({
+        selectedFile: nextSelectedFile,
+        selectedFiles: reconcileSelectedFiles(nextSelectedFile, currentStatus.selectedFiles)
+      });
       await emitGatewayEvent(TELEMETRY_EVENTS.GATEWAY_FILE_SELECTED, "Gateway file selected", envelope.payload || {});
+    }
+
+    if (envelope.type === protocol.GATEWAY_MESSAGE_TYPES.FILES_SELECTED) {
+      const payload = envelope.payload || {};
+      await persistStatus({
+        selectedFiles: Array.isArray(payload.files) ? payload.files : [],
+        selectedFile: payload.selectedFile || null
+      });
+      await emitGatewayEvent(
+        TELEMETRY_EVENTS.GATEWAY_FILE_SELECTED,
+        "Gateway files selected",
+        {
+          count: Array.isArray(payload.files) ? payload.files.length : 0,
+          selectedFile: payload.selectedFile || null
+        }
+      );
     }
 
     if (envelope.type === protocol.GATEWAY_MESSAGE_TYPES.ERROR && envelope.correlationId && pendingRequests.has(envelope.correlationId)) {

@@ -42,8 +42,12 @@
     const pageState = store.pageState || {};
     const gatewayStatus = store.gatewayStatus || {};
     const selectedFile = store.selectedFile || gatewayStatus.selectedFile || null;
+    const selectedFiles = store.selectedFiles && store.selectedFiles.length
+      ? store.selectedFiles
+      : (gatewayStatus.selectedFiles || []);
     const lastRunSummary = store.lastRunSummary || {};
     const conditionalWorkflowResult = store.conditionalWorkflowResult || {};
+    const batchRunResult = store.batchRunResult || {};
     const conditionalWorkflowRun = conditionalWorkflowResult.workflowRun || {};
     const conditionalWorkflowVariables = conditionalWorkflowRun.variables || {};
     const conditionalWorkflowVisited = conditionalWorkflowRun.visitedNodeIds || [];
@@ -63,6 +67,7 @@
       "</div>",
       "<div class='button-row'>",
       "<button id='automation-select-file'>Select Excel File</button>",
+      "<button id='automation-select-files'>Select Multiple Excel Files</button>",
       "<button id='open-workflow-lab'>Open Workflow Lab</button>",
       "<button id='automation-export-causal-report'>Export Causal Report</button>",
       "</div>",
@@ -72,7 +77,9 @@
       "<p class='field-help'>Paste or load a JSON workflow definition, then run the conditional DeepSeek flow without building a visual canvas yet.</p>",
       "<div class='button-row'>",
       "<button id='load-sample-conditional-workflow'>Load sample workflow</button>",
-      "<button class='primary' id='run-conditional-workflow'>Run conditional workflow</button>",
+      "<button class='primary' id='run-conditional-workflow'>"
+        + escapeHtml(store.isRunningBatchConditionalWorkflow ? "Running batch workflow..." : store.isRunningConditionalWorkflow ? "Running conditional workflow..." : "Run conditional workflow")
+        + "</button>",
       "</div>",
       "<label>Workflow JSON</label>",
       "<textarea id='conditional-workflow-json' rows='14' placeholder='Paste a conditional workflow JSON definition here'>" + escapeHtml(store.conditionalWorkflowText || "") + "</textarea>",
@@ -98,6 +105,55 @@
           + "<div><label>Decisions</label>" + renderCompactJson(conditionalWorkflowRun.decisions || {}) + "</div>"
           + "</div>"
         : ""),
+      "</div>",
+      (store.batchRunResult
+        ? "<div class='card'>"
+          + "<h3>Batch Run Summary</h3>"
+          + "<div class='metrics-grid'>"
+          + "<div class='metric-card'><span>Status</span><strong>" + escapeHtml(batchRunResult.status || "Idle") + "</strong></div>"
+          + "<div class='metric-card'><span>Total count</span><strong>" + escapeHtml(String(batchRunResult.totalCount || 0)) + "</strong></div>"
+          + "<div class='metric-card'><span>Completed count</span><strong>" + escapeHtml(String(batchRunResult.completedCount || 0)) + "</strong></div>"
+          + "<div class='metric-card'><span>Failed count</span><strong>" + escapeHtml(String(batchRunResult.failedCount || 0)) + "</strong></div>"
+          + "</div>"
+          + ((batchRunResult.results || []).length
+            ? "<div class='stack-blocks'>"
+              + (batchRunResult.results || []).map(function mapBatchResult(item, index) {
+                const itemFile = item && item.selectedFile ? item.selectedFile : null;
+                const itemError = item && item.error ? item.error : null;
+                return "<div class='timeline-item'><strong>"
+                  + escapeHtml(String(index + 1))
+                  + ". "
+                  + escapeHtml(itemFile && itemFile.name ? itemFile.name : "Unknown")
+                  + " - "
+                  + escapeHtml(item && item.status ? item.status : "unknown")
+                  + "</strong><div>"
+                  + escapeHtml(item && item.workflowAhkFileSave && item.workflowAhkFileSave.fileName ? "AHK: " + item.workflowAhkFileSave.fileName : itemError && itemError.message ? "Error: " + itemError.message : "No AHK file saved")
+                  + "</div></div>";
+              }).join("")
+              + "</div>"
+            : "<div class='muted'>No batch results yet.</div>")
+          + (batchRunResult.error
+            ? "<p class='warning-text'>Batch error: " + escapeHtml(batchRunResult.error.message || "Unknown error") + "</p>"
+            : "")
+          + "</div>"
+        : ""),
+      "<div class='card'>",
+      "<h3>Selected Batch</h3>",
+      (selectedFiles.length
+        ? "<p class='field-help'>Selected files: " + escapeHtml(String(selectedFiles.length)) + ". Active file: " + escapeHtml(selectedFile ? selectedFile.name : "None") + "</p>"
+          + "<div class='stack-blocks'>"
+          + selectedFiles.map(function mapSelectedFile(file, index) {
+            const isActive = selectedFile && selectedFile.fileId && file && file.fileId === selectedFile.fileId;
+            return "<div class='timeline-item'><strong>"
+              + escapeHtml(String(index + 1))
+              + ". "
+              + escapeHtml(file && file.name ? file.name : "Unknown")
+              + "</strong><div>"
+              + escapeHtml(isActive ? "Active selected file" : (file && file.extension ? file.extension : ""))
+              + "</div></div>";
+          }).join("")
+          + "</div>"
+        : "<div class='muted'>No batch of Excel files selected yet.</div>"),
       "</div>",
       "<div class='card'>",
       "<h3>Selected File</h3>",

@@ -25,8 +25,13 @@
     return NewSiteBackground.DeepSeekConditionalWorkflow.run(message);
   }
 
+  async function runBatchConditionalWorkflow(message) {
+    return NewSiteBackground.DeepSeekBatchConditionalWorkflow.run(message);
+  }
+
   NewSiteBackground.AutomationHandlers = {
     runAutomation: runAutomation,
-    runConditionalWorkflow: runConditionalWorkflow
+    runConditionalWorkflow: runConditionalWorkflow,
+    runBatchConditionalWorkflow: runBatchConditionalWorkflow
   };
 })(globalThis);

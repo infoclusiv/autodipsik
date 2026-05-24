@@ -17,7 +17,8 @@
   NewSiteCore.GatewayStorageKeys = {
     GATEWAY_STATUS: "gateway_status",
     GATEWAY_EVENTS: "gateway_events",
-    GATEWAY_SELECTED_FILE: "gateway_selected_file"
+    GATEWAY_SELECTED_FILE: "gateway_selected_file",
+    GATEWAY_SELECTED_FILES: "gateway_selected_files"
   };
 
   NewSiteCore.DeepSeekStorageKeys = {

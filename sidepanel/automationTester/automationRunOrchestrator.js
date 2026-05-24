@@ -15,7 +15,21 @@
     });
   }
 
+  async function runConditionalWorkflowBatch(input) {
+    return messaging.sendMessage({
+      type: MESSAGE_TYPES.CONDITIONAL_WORKFLOW_BATCH_RUN,
+      input: {
+        definition: input.definition || null,
+        selectedFiles: Array.isArray(input.selectedFiles) ? input.selectedFiles : [],
+        continueOnError: input && input.continueOnError === true,
+        autoConnectGateway: true,
+        maxNodes: input && typeof input.maxNodes !== "undefined" ? input.maxNodes : null
+      }
+    });
+  }
+
   NewSiteSidepanel.AutomationRunOrchestrator = {
-    runConditionalWorkflow: runConditionalWorkflow
+    runConditionalWorkflow: runConditionalWorkflow,
+    runConditionalWorkflowBatch: runConditionalWorkflowBatch
   };
 })(globalThis);

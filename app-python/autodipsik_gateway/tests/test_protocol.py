@@ -27,6 +27,16 @@ def test_file_content_by_path_message_passes() -> None:
     assert message["type"] == "FILE_CONTENT_BY_PATH_REQUEST"
 
 
+def test_file_picker_open_multiple_message_passes() -> None:
+    message = parse_message('{"id":"2b","type":"FILE_PICKER_OPEN_MULTIPLE_REQUEST","payload":{}}')
+    assert message["type"] == "FILE_PICKER_OPEN_MULTIPLE_REQUEST"
+
+
+def test_file_select_by_id_message_passes() -> None:
+    message = parse_message('{"id":"2c","type":"FILE_SELECT_BY_ID_REQUEST","payload":{"fileId":"abc"}}')
+    assert message["type"] == "FILE_SELECT_BY_ID_REQUEST"
+
+
 def test_save_deepseek_response_json_message_passes() -> None:
     message = parse_message('{"id":"3","type":"SAVE_DEEPSEEK_RESPONSE_JSON","payload":{"fileId":"abc","traceId":"trace_1","response":{"text":"ok"}}}')
     assert message["type"] == "SAVE_DEEPSEEK_RESPONSE_JSON"

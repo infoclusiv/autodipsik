@@ -106,7 +106,11 @@
       definition: null,
       autoConnectGateway: true,
       autoOpenDeepSeek: true,
-      autoSelectFileIfMissing: true
+      autoSelectFileIfMissing: true,
+      selectedFile: null,
+      fileId: "",
+      targetTabId: null,
+      targetWindowId: null
     }, message.input || {});
 
     return {
@@ -123,11 +127,14 @@
     let workflowDefinition = null;
     let workflowId = "";
     let gatewayStatus = await GatewayClient.getStatus();
-    let selectedFile = gatewayStatus && gatewayStatus.selectedFile ? gatewayStatus.selectedFile : null;
+    let selectedFile = input.selectedFile && typeof input.selectedFile === "object"
+      ? Object.assign({}, input.selectedFile)
+      : (gatewayStatus && gatewayStatus.selectedFile ? gatewayStatus.selectedFile : null);
     let pageState = null;
     let workflowRun = null;
     let workflowRunJsonSave = null;
     let workflowAhkFileSave = null;
+    let targetTabId = Number.isInteger(input.targetTabId) ? input.targetTabId : null;
 
     try {
       workflowDefinition = ConditionalWorkflowContracts.validateConditionalWorkflowDefinition(input.definition, {
@@ -164,10 +171,30 @@
 
       selectedFile = await runStage(traceId, workflowId, "ensure_file_selected", async function ensureFileSelected() {
         if (!requiresFileAttachment) {
+          if (input.fileId) {
+            const selection = await NewSiteBackground.GatewayFileService.selectFileById(traceId, input.fileId);
+            gatewayStatus = selection.gatewayStatus || await GatewayClient.getStatus();
+            return gatewayStatus && gatewayStatus.selectedFile ? gatewayStatus.selectedFile : null;
+          }
+
+          if (selectedFile && selectedFile.fileId) {
+            const selection = await NewSiteBackground.GatewayFileService.selectFileById(traceId, selectedFile.fileId);
+            gatewayStatus = selection.gatewayStatus || await GatewayClient.getStatus();
+            return gatewayStatus && gatewayStatus.selectedFile ? gatewayStatus.selectedFile : selectedFile;
+          }
+
           return gatewayStatus && gatewayStatus.selectedFile ? gatewayStatus.selectedFile : null;
         }
 
         let currentStatus = await GatewayClient.getStatus();
+        if (input.fileId) {
+          const selection = await NewSiteBackground.GatewayFileService.selectFileById(traceId, input.fileId);
+          currentStatus = selection.gatewayStatus || await GatewayClient.getStatus();
+        } else if (selectedFile && selectedFile.fileId) {
+          const selection = await NewSiteBackground.GatewayFileService.selectFileById(traceId, selectedFile.fileId);
+          currentStatus = selection.gatewayStatus || await GatewayClient.getStatus();
+        }
+
         if (!currentStatus.selectedFile && input.autoSelectFileIfMissing) {
           const selection = await NewSiteBackground.GatewayFileService.selectFile(traceId);
           currentStatus = selection.gatewayStatus || currentStatus;
@@ -189,16 +216,24 @@
 
       if (input.autoOpenDeepSeek) {
         await runStage(traceId, workflowId, "ensure_deepseek_tab", function ensureDeepSeekTab() {
+          if (targetTabId) {
+            return chrome.tabs.get(targetTabId);
+          }
+
           return NewSiteBackground.DeepSeekTabService.ensureReady(traceId);
         });
       }
 
       pageState = await runStage(traceId, workflowId, "detect_page_state", async function detectPageState() {
-        return NewSiteBackground.DeepSeekTabService.forward({
+        const pageStateMessage = {
           type: MESSAGE_TYPES.PAGE_STATE_DETECT,
           traceId: traceId,
           targetSiteId: "deepseek"
-        });
+        };
+
+        return targetTabId
+          ? NewSiteBackground.DeepSeekTabService.forwardToTab(targetTabId, pageStateMessage)
+          : NewSiteBackground.DeepSeekTabService.forward(pageStateMessage);
       });
 
       workflowRun = await runStage(traceId, workflowId, "run_conditional_workflow", async function executeWorkflow() {
@@ -267,7 +302,8 @@
               promptText: node.promptText,
               attachFile: node.attachFile === true,
               waitForResponse: node.waitForResponse !== false,
-              selectedFile: node.attachFile === true ? selectedFile : null
+              selectedFile: node.attachFile === true ? selectedFile : null,
+              targetTabId: targetTabId
             });
 
             return {

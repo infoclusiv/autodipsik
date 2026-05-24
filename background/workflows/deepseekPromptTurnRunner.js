@@ -34,7 +34,8 @@
       promptTextLength: String(input && input.promptText ? input.promptText : "").length,
       attachFile: attachFile,
       waitForResponse: input && typeof input.waitForResponse === "boolean" ? input.waitForResponse : true,
-      selectedFile: selectedFile
+      selectedFile: selectedFile,
+      targetTabId: Number.isInteger(input && input.targetTabId) ? input.targetTabId : null
     };
   }
 
@@ -152,12 +153,16 @@
         automationInput.filePayload = null;
       }
 
-      automationResult = await NewSiteBackground.DeepSeekTabService.forward({
+      const forwardMessage = {
         type: MESSAGE_TYPES.RUN_AUTOMATION,
         traceId: input.traceId,
         targetSiteId: "deepseek",
         input: automationInput
-      });
+      };
+
+      automationResult = input.targetTabId
+        ? await NewSiteBackground.DeepSeekTabService.forwardToTab(input.targetTabId, forwardMessage)
+        : await NewSiteBackground.DeepSeekTabService.forward(forwardMessage);
 
       const response = extractCapturedResponse(automationResult, input);
       const result = {

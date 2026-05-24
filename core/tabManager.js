@@ -35,6 +35,19 @@
     return chrome.tabs.create({ url: url });
   }
 
+  async function openTabInWindow(url, windowId) {
+    const createOptions = {
+      url: url,
+      active: true
+    };
+
+    if (typeof windowId === "number") {
+      createOptions.windowId = windowId;
+    }
+
+    return chrome.tabs.create(createOptions);
+  }
+
   async function findTabByUrlPattern(urlPattern) {
     const tabs = await chrome.tabs.query({ url: urlPattern });
     return tabs[0] || null;
@@ -288,6 +301,7 @@
   NewSiteCore.TabManager = {
     getActiveTab: getActiveTab,
     openTab: openTab,
+    openTabInWindow: openTabInWindow,
     findTabByUrlPattern: findTabByUrlPattern,
     ensureTab: ensureTab,
     waitForTabComplete: waitForTabComplete,

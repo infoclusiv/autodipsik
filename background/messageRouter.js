@@ -29,10 +29,13 @@
   handlers[MESSAGE_TYPES.DEEPSEEK_TAB_ENSURE] = NewSiteBackground.TabHandlers.ensureDeepSeekTab;
   handlers[MESSAGE_TYPES.RUN_AUTOMATION] = NewSiteBackground.AutomationHandlers.runAutomation;
   handlers[MESSAGE_TYPES.CONDITIONAL_WORKFLOW_RUN] = NewSiteBackground.AutomationHandlers.runConditionalWorkflow;
+  handlers[MESSAGE_TYPES.CONDITIONAL_WORKFLOW_BATCH_RUN] = NewSiteBackground.AutomationHandlers.runBatchConditionalWorkflow;
   handlers[MESSAGE_TYPES.GATEWAY_STATUS_GET] = NewSiteBackground.GatewayHandlers.getStatus;
   handlers[MESSAGE_TYPES.GATEWAY_CONNECT] = NewSiteBackground.GatewayHandlers.connect;
   handlers[MESSAGE_TYPES.GATEWAY_DISCONNECT] = NewSiteBackground.GatewayHandlers.disconnect;
   handlers[MESSAGE_TYPES.GATEWAY_SELECT_FILE] = NewSiteBackground.GatewayHandlers.selectFile;
+  handlers[MESSAGE_TYPES.GATEWAY_SELECT_FILES] = NewSiteBackground.GatewayHandlers.selectFiles;
+  handlers[MESSAGE_TYPES.GATEWAY_SELECT_FILE_BY_ID] = NewSiteBackground.GatewayHandlers.selectFileById;
   handlers[MESSAGE_TYPES.GATEWAY_EXECUTE_UPLOAD] = NewSiteBackground.GatewayHandlers.executeUpload;
   handlers[MESSAGE_TYPES.GATEWAY_EXPORT_DIAGNOSTICS] = NewSiteBackground.DiagnosticsHandlers.exportGatewayDiagnostics;
 

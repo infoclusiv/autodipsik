@@ -5,7 +5,10 @@
     state: {
       gatewayStatus: null,
       selectedFile: null,
+      selectedFiles: [],
       fileSelectionResult: null,
+      batchSelectionResult: null,
+      batchRunResult: null,
       runtimeStatus: null,
       pageState: null,
       conditionalWorkflowText: "",
@@ -15,7 +18,9 @@
       lastError: null,
       isConnectingGateway: false,
       isSelectingFile: false,
-      isRunningConditionalWorkflow: false
+      isSelectingFiles: false,
+      isRunningConditionalWorkflow: false,
+      isRunningBatchConditionalWorkflow: false
     }
   };
 })(globalThis);

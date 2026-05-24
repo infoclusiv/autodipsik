@@ -38,6 +38,7 @@ importScripts(
   "background/services/gatewayFileService.js",
   "background/workflows/deepseekPromptTurnRunner.js",
   "background/workflows/deepseekConditionalWorkflow.js",
+  "background/workflows/deepseekBatchConditionalWorkflow.js",
   "background/messageHandlers/profileHandlers.js",
   "background/messageHandlers/diagnosticsHandlers.js",
   "background/messageHandlers/gatewayHandlers.js",

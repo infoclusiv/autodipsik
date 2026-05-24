@@ -4,7 +4,7 @@ from pathlib import Path
 
 from autodipsik_gateway.config import Settings
 from autodipsik_gateway.contracts import build_envelope
-from autodipsik_gateway.files.file_picker import open_file_picker
+from autodipsik_gateway.files.file_picker import open_file_picker, open_multi_file_picker
 from autodipsik_gateway.files.response_writer import (
     write_deepseek_response_json,
     write_deepseek_workflow_ahk_file,
@@ -105,6 +105,121 @@ class GatewayHandlers:
                 component="python_gateway",
                 state="file_selected",
                 details=stored.to_public_payload(),
+            )
+            return build_envelope("FILE_SELECTED", stored.to_public_payload(), correlation_id=correlation_id)
+
+        if message_type == "FILE_PICKER_OPEN_MULTIPLE_REQUEST":
+            self.logger.emit(
+                event="python_gateway.file_picker.open_multiple_requested",
+                correlation_id=correlation_id,
+                component="python_gateway",
+                state="file_picker_open_multiple_requested",
+                details=message.get("payload", {}),
+            )
+            picker_result = open_multi_file_picker(
+                self.settings.allowed_extensions,
+                message.get("payload", {}).get("dialogTitle", "Select Excel files"),
+            )
+            if picker_result.error:
+                return build_envelope(
+                    "ERROR",
+                    build_error_payload(
+                        "FILE_PICKER_UNAVAILABLE",
+                        "Multi-file picker is unavailable.",
+                        expected="The gateway should be able to open a Tkinter multi-file picker.",
+                        actual=picker_result.error,
+                    ),
+                    correlation_id=correlation_id,
+                )
+
+            if not picker_result.selected:
+                return build_envelope(
+                    "ERROR",
+                    build_error_payload(
+                        "FILE_PICKER_CANCELLED",
+                        "File picker was cancelled.",
+                        expected="The user should select one or more Excel files.",
+                        actual="The dialog was closed without selecting files.",
+                    ),
+                    correlation_id=correlation_id,
+                )
+
+            if not picker_result.paths:
+                return build_envelope(
+                    "ERROR",
+                    build_error_payload(
+                        "FILE_PICKER_NO_FILES_SELECTED",
+                        "No files were selected.",
+                        expected="The user should select one or more Excel files.",
+                        actual="The dialog completed without any selected file paths.",
+                    ),
+                    correlation_id=correlation_id,
+                )
+
+            for path in picker_result.paths:
+                self._validate_or_raise(path)
+
+            stored_files = self.file_store.set_selected_paths(picker_result.paths)
+            active_file = self.file_store.get_selected_file_or_raise()
+            files_payload = [stored.to_public_payload() for stored in stored_files]
+            self.logger.emit(
+                event="python_gateway.files_selected",
+                correlation_id=correlation_id,
+                component="python_gateway",
+                state="files_selected",
+                details={
+                    "count": len(files_payload),
+                    "activeFileId": active_file.file_id,
+                    "fileIds": [item["fileId"] for item in files_payload],
+                },
+            )
+            return build_envelope(
+                "FILES_SELECTED",
+                {
+                    "files": files_payload,
+                    "selectedFile": active_file.to_public_payload(),
+                    "count": len(files_payload),
+                },
+                correlation_id=correlation_id,
+            )
+
+        if message_type == "FILE_SELECT_BY_ID_REQUEST":
+            file_id = str(message.get("payload", {}).get("fileId") or "")
+            if not file_id:
+                return build_envelope(
+                    "ERROR",
+                    build_error_payload(
+                        "FILE_ID_REQUIRED",
+                        "A file id is required to activate a selected file.",
+                        expected="payload.fileId should be a non-empty string.",
+                        actual="payload.fileId was empty or missing.",
+                    ),
+                    correlation_id=correlation_id,
+                )
+
+            stored = self.file_store.get_file_by_id(file_id)
+            if not stored:
+                return build_envelope(
+                    "ERROR",
+                    build_error_payload(
+                        "UNKNOWN_SELECTED_FILE_ID",
+                        "The requested file id is not part of the current selected batch.",
+                        expected="payload.fileId should match one of the selected gateway files.",
+                        actual=file_id,
+                    ),
+                    correlation_id=correlation_id,
+                )
+
+            stored = self.file_store.set_active_file_id(file_id)
+            self.logger.emit(
+                event="python_gateway.file_activated",
+                correlation_id=correlation_id,
+                component="python_gateway",
+                state="file_activated",
+                details={
+                    "fileId": stored.file_id,
+                    "selectedFileCount": len(self.file_store.get_selected_files()),
+                },
             )
             return build_envelope("FILE_SELECTED", stored.to_public_payload(), correlation_id=correlation_id)
 

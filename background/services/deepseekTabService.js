@@ -11,6 +11,41 @@
   const DiagnosticStore = NewSiteCore.DiagnosticStore;
   const deepSeekConfig = DeepSeekAutomation.DEEPSEEK_CONFIG;
 
+  async function recordReadyTab(traceId, stage, readyTab) {
+    await DiagnosticStore.recordRuntimeSnapshot({
+      traceId: traceId,
+      stage: stage,
+      url: readyTab.url || deepSeekConfig.baseUrl,
+      tabId: readyTab.id,
+      title: readyTab.title || ""
+    });
+  }
+
+  async function pingDeepSeekTab(traceId, tabId) {
+    const healthCheck = await TabManager.sendMessageWithContentScriptCheck(
+      tabId,
+      {
+        type: MESSAGE_TYPES.DEEPSEEK_CONTENT_SCRIPT_PING,
+        traceId: traceId,
+        targetSiteId: "deepseek"
+      },
+      {
+        targetSiteId: "deepseek"
+      }
+    );
+
+    const tab = await chrome.tabs.get(tabId);
+    await DiagnosticStore.recordContentScriptHealth({
+      traceId: traceId,
+      available: Boolean(healthCheck && healthCheck.available),
+      activeTabUrl: tab && tab.url ? tab.url : deepSeekConfig.baseUrl,
+      checkedAt: new Date().toISOString(),
+      response: healthCheck || null
+    });
+
+    return healthCheck;
+  }
+
   async function ensureReady(traceId) {
     await Telemetry.emit({
       eventName: TELEMETRY_EVENTS.DEEPSEEK_TAB_ENSURE_STARTED,
@@ -24,33 +59,8 @@
     try {
       const tab = await TabManager.ensureTab(deepSeekConfig.baseUrl, deepSeekConfig.urlPattern);
       const readyTab = await TabManager.waitForTabComplete(tab.id, 20000);
-      await DiagnosticStore.recordRuntimeSnapshot({
-        traceId: traceId,
-        stage: "ensure_deepseek_tab",
-        url: readyTab.url || deepSeekConfig.baseUrl,
-        tabId: readyTab.id,
-        title: readyTab.title || ""
-      });
-
-      const healthCheck = await TabManager.sendMessageWithContentScriptCheck(
-        readyTab.id,
-        {
-          type: MESSAGE_TYPES.DEEPSEEK_CONTENT_SCRIPT_PING,
-          traceId: traceId,
-          targetSiteId: "deepseek"
-        },
-        {
-          targetSiteId: "deepseek"
-        }
-      );
-
-      await DiagnosticStore.recordContentScriptHealth({
-        traceId: traceId,
-        available: Boolean(healthCheck && healthCheck.available),
-        activeTabUrl: readyTab.url || deepSeekConfig.baseUrl,
-        checkedAt: new Date().toISOString(),
-        response: healthCheck || null
-      });
+      await recordReadyTab(traceId, "ensure_deepseek_tab", readyTab);
+      await pingDeepSeekTab(traceId, readyTab.id);
       await Telemetry.emit({
         eventName: TELEMETRY_EVENTS.DEEPSEEK_TAB_ENSURE_COMPLETED,
         traceId: traceId,
@@ -87,6 +97,96 @@
     }
   }
 
+  async function openFreshReady(traceId, options) {
+    const opts = options || {};
+    let baseWindowId = typeof opts.windowId === "number" ? opts.windowId : null;
+
+    if (baseWindowId === null && typeof opts.baseTabId === "number") {
+      try {
+        const baseTab = await chrome.tabs.get(opts.baseTabId);
+        baseWindowId = typeof baseTab.windowId === "number" ? baseTab.windowId : null;
+      } catch (error) {
+        baseWindowId = null;
+      }
+    }
+
+    if (baseWindowId === null) {
+      const activeTab = await TabManager.getActiveTab();
+      if (activeTab && typeof activeTab.windowId === "number") {
+        baseWindowId = activeTab.windowId;
+      }
+    }
+
+    if (baseWindowId === null) {
+      const existingDeepSeekTab = await TabManager.findTabByUrlPattern(deepSeekConfig.urlPattern);
+      if (existingDeepSeekTab && typeof existingDeepSeekTab.windowId === "number") {
+        baseWindowId = existingDeepSeekTab.windowId;
+      }
+    }
+
+    await Telemetry.emit({
+      eventName: TELEMETRY_EVENTS.DEEPSEEK_TAB_ENSURE_STARTED,
+      traceId: traceId,
+      siteId: "deepseek",
+      component: "background",
+      level: "info",
+      message: "Opening a fresh DeepSeek tab",
+      data: {
+        windowId: typeof baseWindowId === "number" ? baseWindowId : null
+      }
+    });
+
+    try {
+      const tab = await TabManager.openTabInWindow(deepSeekConfig.baseUrl, baseWindowId);
+      const readyTab = await TabManager.waitForTabComplete(tab.id, 20000);
+      await recordReadyTab(traceId, "open_fresh_deepseek_tab", readyTab);
+      await pingDeepSeekTab(traceId, readyTab.id);
+      await Telemetry.emit({
+        eventName: TELEMETRY_EVENTS.DEEPSEEK_TAB_ENSURE_COMPLETED,
+        traceId: traceId,
+        siteId: "deepseek",
+        component: "background",
+        level: "info",
+        message: "Fresh DeepSeek tab is ready",
+        data: {
+          tabId: readyTab.id,
+          url: readyTab.url || deepSeekConfig.baseUrl,
+          windowId: typeof readyTab.windowId === "number" ? readyTab.windowId : null
+        }
+      });
+      return readyTab;
+    } catch (error) {
+      const structured = Errors.toStructuredError(error);
+      structured.failedStage = "open_fresh_deepseek_tab";
+      await Telemetry.emit({
+        eventName: TELEMETRY_EVENTS.DEEPSEEK_TAB_ENSURE_FAILED,
+        traceId: traceId,
+        siteId: "deepseek",
+        component: "background",
+        level: "error",
+        message: structured.message,
+        actual: structured.actual,
+        data: structured
+      });
+      throw Errors.createError("DEEPSEEK_TAB_NOT_READY", "A fresh DeepSeek tab could not be prepared.", {
+        traceId: traceId,
+        failedStage: "open_fresh_deepseek_tab",
+        expected: "A new DeepSeek tab should be opened in the current browser window and fully loaded.",
+        actual: structured.actual || structured.message,
+        nextChecks: [
+          "Confirm https://chat.deepseek.com/ is reachable in the browser.",
+          "Reload the extension if the content script does not attach."
+        ]
+      });
+    }
+  }
+
+  async function forwardToTab(tabId, message) {
+    return TabManager.sendMessageWithContentScriptCheck(tabId, message, {
+      targetSiteId: "deepseek"
+    });
+  }
+
   async function forward(message) {
     const activeTab = await ensureReady(message.traceId);
     const failedStage = message.type === MESSAGE_TYPES.PAGE_STATE_DETECT
@@ -106,9 +206,7 @@
     });
 
     try {
-      return await TabManager.sendMessageWithContentScriptCheck(activeTab.id, message, {
-        targetSiteId: "deepseek"
-      });
+      return await forwardToTab(activeTab.id, message);
     } catch (error) {
       await DiagnosticStore.recordContentScriptHealth({
         traceId: message.traceId,
@@ -148,6 +246,8 @@
 
   NewSiteBackground.DeepSeekTabService = {
     ensureReady: ensureReady,
+    openFreshReady: openFreshReady,
+    forwardToTab: forwardToTab,
     forward: forward
   };
 })(globalThis);

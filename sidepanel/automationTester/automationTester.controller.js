@@ -137,6 +137,7 @@
     if (response && response.gatewayStatus) {
       store.gatewayStatus = response.gatewayStatus;
       store.selectedFile = response.gatewayStatus.selectedFile || store.selectedFile || null;
+      store.selectedFiles = response.gatewayStatus.selectedFiles || store.selectedFiles || [];
     }
 
     if (response && response.status === "failed") {
@@ -169,6 +170,7 @@
     }
     store.gatewayStatus = response.gatewayStatus || null;
     store.selectedFile = store.gatewayStatus ? store.gatewayStatus.selectedFile || null : null;
+    store.selectedFiles = store.gatewayStatus ? store.gatewayStatus.selectedFiles || [] : [];
     rerender();
   }
 
@@ -181,6 +183,7 @@
     }
     store.gatewayStatus = response.gatewayStatus || null;
     store.selectedFile = store.gatewayStatus ? store.gatewayStatus.selectedFile || null : null;
+    store.selectedFiles = store.gatewayStatus ? store.gatewayStatus.selectedFiles || [] : [];
     store.lastError = null;
     rerender();
     Toast.showToast("Gateway connected.");
@@ -193,6 +196,7 @@
     }
     store.gatewayStatus = response.gatewayStatus || null;
     store.selectedFile = null;
+    store.selectedFiles = [];
     store.lastError = null;
     rerender();
   }
@@ -206,10 +210,27 @@
     }
     store.gatewayStatus = response.gatewayStatus || null;
     store.selectedFile = response.file || (store.gatewayStatus ? store.gatewayStatus.selectedFile : null);
+    store.selectedFiles = store.gatewayStatus ? store.gatewayStatus.selectedFiles || [] : [];
     store.fileSelectionResult = response.file || null;
     store.lastError = null;
     rerender();
     Toast.showToast(store.selectedFile ? "Excel file selected." : "File selection cancelled.");
+  }
+
+  async function selectExcelFiles() {
+    store.isSelectingFiles = true;
+    const response = await messaging.sendMessage({ type: MESSAGE_TYPES.GATEWAY_SELECT_FILES });
+    store.isSelectingFiles = false;
+    if (!applyResponse(response)) {
+      return;
+    }
+    store.gatewayStatus = response.gatewayStatus || null;
+    store.selectedFiles = response.files || (store.gatewayStatus ? store.gatewayStatus.selectedFiles || [] : []);
+    store.selectedFile = response.selectedFile || (store.gatewayStatus ? store.gatewayStatus.selectedFile : null);
+    store.batchSelectionResult = response;
+    store.lastError = null;
+    rerender();
+    Toast.showToast(store.selectedFiles.length ? String(store.selectedFiles.length) + " Excel files selected." : "File selection cancelled.");
   }
 
   async function detectPageState() {
@@ -268,6 +289,10 @@
   }
 
   async function runConditionalWorkflow() {
+    if (store.isRunningConditionalWorkflow || store.isRunningBatchConditionalWorkflow) {
+      return;
+    }
+
     const collected = collectAutomationInput();
     await flushConditionalWorkflowDraftSave(collected.conditionalWorkflowText);
     if (!collected.conditionalWorkflowText.trim()) {
@@ -289,30 +314,48 @@
 
     store.conditionalWorkflowParseError = "";
     store.conditionalWorkflowResult = null;
-    store.isRunningConditionalWorkflow = true;
+    store.batchRunResult = null;
+    const selectedFiles = Array.isArray(store.selectedFiles) ? store.selectedFiles : [];
+    const shouldRunBatch = selectedFiles.length > 1;
+    store.isRunningConditionalWorkflow = !shouldRunBatch;
+    store.isRunningBatchConditionalWorkflow = shouldRunBatch;
     rerender();
 
-    const response = await orchestrator.runConditionalWorkflow({
-      definition: definition
-    });
+    const response = shouldRunBatch
+      ? await orchestrator.runConditionalWorkflowBatch({
+        definition: definition,
+        selectedFiles: selectedFiles
+      })
+      : await orchestrator.runConditionalWorkflow({
+        definition: definition
+      });
 
     store.isRunningConditionalWorkflow = false;
-    store.conditionalWorkflowResult = response;
+    store.isRunningBatchConditionalWorkflow = false;
+    store.conditionalWorkflowResult = shouldRunBatch ? null : response;
+    store.batchRunResult = shouldRunBatch ? response : null;
     store.lastRunSummary = response;
     store.lastError = response.error || null;
     if (response.gatewayStatus) {
       store.gatewayStatus = response.gatewayStatus;
       store.selectedFile = response.gatewayStatus.selectedFile || store.selectedFile;
+      store.selectedFiles = response.gatewayStatus.selectedFiles || store.selectedFiles || [];
     }
     rerender();
     Toast.showToast(
-      response.status === "completed"
-        ? (response.workflowAhkFileSave && response.workflowAhkFileSave.fileName
-          ? "Conditional workflow completed. AHK saved: " + response.workflowAhkFileSave.fileName
-          : response.workflowRunJsonSave && response.workflowRunJsonSave.fileName
-          ? "Conditional workflow JSON saved: " + response.workflowRunJsonSave.fileName
-          : "Conditional workflow executed.")
-        : (response.error && response.error.message ? response.error.message : "Conditional workflow failed.")
+      shouldRunBatch
+        ? (response.status === "completed"
+          ? "Batch conditional workflow completed. " + String(response.completedCount || 0) + " of " + String(response.totalCount || 0) + " files processed."
+          : response.error && response.error.message
+          ? "Batch stopped on " + String(response.failedCount || 0) + " failure: " + response.error.message
+          : "Batch conditional workflow failed.")
+        : (response.status === "completed"
+          ? (response.workflowAhkFileSave && response.workflowAhkFileSave.fileName
+            ? "Conditional workflow completed. AHK saved: " + response.workflowAhkFileSave.fileName
+            : response.workflowRunJsonSave && response.workflowRunJsonSave.fileName
+            ? "Conditional workflow JSON saved: " + response.workflowRunJsonSave.fileName
+            : "Conditional workflow executed.")
+          : (response.error && response.error.message ? response.error.message : "Conditional workflow failed."))
     );
   }
 
@@ -320,6 +363,7 @@
     document.getElementById("automation-connect-gateway").onclick = connectGateway;
     document.getElementById("automation-disconnect-gateway").onclick = disconnectGateway;
     document.getElementById("automation-select-file").onclick = selectExcelFile;
+    document.getElementById("automation-select-files").onclick = selectExcelFiles;
     document.getElementById("automation-export-causal-report").onclick = exportDiagnostics;
     document.getElementById("open-target-site").onclick = function onOpen() {
       chrome.tabs.create({ url: deepSeekConfig.baseUrl });

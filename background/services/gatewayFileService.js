@@ -40,6 +40,50 @@
     return result;
   }
 
+  async function selectFiles(traceId) {
+    const response = await GatewayClient.request(
+      GatewayProtocol.GATEWAY_MESSAGE_TYPES.FILE_PICKER_OPEN_MULTIPLE_REQUEST,
+      {
+        allowedExtensions: [".xlsx", ".xls", ".csv"],
+        dialogTitle: "Select Excel files to attach"
+      }
+    );
+    const result = {
+      status: "completed",
+      traceId: traceId,
+      gatewayStatus: await GatewayClient.getStatus(),
+      files: response.payload && Array.isArray(response.payload.files) ? response.payload.files : [],
+      selectedFile: response.payload && response.payload.selectedFile ? response.payload.selectedFile : null
+    };
+    await DiagnosticStore.recordGatewaySnapshot({
+      traceId: traceId,
+      stage: "ensure_files_selected",
+      gatewayStatus: result.gatewayStatus
+    });
+    return result;
+  }
+
+  async function selectFileById(traceId, fileId) {
+    const response = await GatewayClient.request(
+      GatewayProtocol.GATEWAY_MESSAGE_TYPES.FILE_SELECT_BY_ID_REQUEST,
+      {
+        fileId: fileId || ""
+      }
+    );
+    const result = {
+      status: "completed",
+      traceId: traceId,
+      gatewayStatus: await GatewayClient.getStatus(),
+      selectedFile: response.payload || null
+    };
+    await DiagnosticStore.recordGatewaySnapshot({
+      traceId: traceId,
+      stage: "select_file_by_id",
+      gatewayStatus: result.gatewayStatus
+    });
+    return result;
+  }
+
   async function executeUpload(traceId) {
     await Telemetry.emit({
       eventName: TELEMETRY_EVENTS.DEEPSEEK_EXECUTE_CLICKED,
@@ -416,6 +460,8 @@
   NewSiteBackground.GatewayFileService = {
     ensureConnected: ensureConnected,
     selectFile: selectFile,
+    selectFiles: selectFiles,
+    selectFileById: selectFileById,
     executeUpload: executeUpload,
     resolvePayload: resolvePayload,
     saveDeepSeekResponseJson: saveDeepSeekResponseJson,
