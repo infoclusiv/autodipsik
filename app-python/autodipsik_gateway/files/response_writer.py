@@ -11,6 +11,22 @@ from autodipsik_gateway.files.file_store import StoredFile
 
 AHK_CODE_BLOCK_PATTERN = re.compile(r"<<<archivo ahk>>>\s*(.*?)\s*<<</archivo ahk>>>", re.DOTALL)
 
+ORACLE_FORMS_SERVICES_SPACING_PATTERN = re.compile(
+    r"(Oracle Fusion Middleware Forms Services:)[ \t]*(Open > SHATRNS)",
+    re.IGNORECASE,
+)
+
+
+def enforce_oracle_forms_services_double_space(ahk_code: str) -> str:
+    """
+    Ensures the Oracle Forms window title contains exactly two spaces after
+    'Services:' before 'Open > SHATRNS'.
+    """
+    return ORACLE_FORMS_SERVICES_SPACING_PATTERN.sub(
+        r"\1  \2",
+        str(ahk_code or "")
+    )
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -250,6 +266,7 @@ def write_deepseek_workflow_ahk_file(selected_file: StoredFile, payload: dict) -
     output_path = build_ahk_output_path(selected_file)
     overwritten = output_path.exists()
     ahk_code = find_ahk_code_in_workflow_run(workflow_run)
+    ahk_code = enforce_oracle_forms_services_double_space(ahk_code)
     output_path.write_text(ahk_code, encoding="utf-8")
 
     return {
