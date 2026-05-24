@@ -17,10 +17,12 @@
     });
   }
 
-  function normalizeText(value) {
-    return String(value || "")
-      .replace(/\s+/g, " ")
-      .trim();
+  function normalizeCapturedText(value) {
+  return String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .trim();
   }
 
   function getVisibleAssistantMessages(selector) {
@@ -163,7 +165,7 @@
       pollCount += 1;
       const selected = getLatestAssistantMessage(selector);
       const element = selected.element;
-      const text = normalizeText(element ? element.innerText || element.textContent || "" : "");
+      const text = normalizeCapturedText(element ? element.innerText || element.textContent || "" : "");
       const elapsedMs = Date.now() - startedAt;
 
       if (text !== lastText) {
