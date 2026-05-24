@@ -307,7 +307,9 @@
     rerender();
     Toast.showToast(
       response.status === "completed"
-        ? (response.workflowRunJsonSave && response.workflowRunJsonSave.fileName
+        ? (response.workflowAhkFileSave && response.workflowAhkFileSave.fileName
+          ? "Conditional workflow completed. AHK saved: " + response.workflowAhkFileSave.fileName
+          : response.workflowRunJsonSave && response.workflowRunJsonSave.fileName
           ? "Conditional workflow JSON saved: " + response.workflowRunJsonSave.fileName
           : "Conditional workflow executed.")
         : (response.error && response.error.message ? response.error.message : "Conditional workflow failed.")

@@ -9,6 +9,9 @@ from typing import Callable
 from autodipsik_gateway.files.file_store import StoredFile
 
 
+AHK_CODE_BLOCK_PATTERN = re.compile(r"<<<archivo ahk>>>\s*(.*?)\s*<<</archivo ahk>>>", re.DOTALL)
+
+
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -47,6 +50,54 @@ def build_workflow_run_output_path(selected_file: StoredFile, timestamp: datetim
         candidate = output_dir / f"{base_name}.{suffix}.json"
         suffix += 1
     return candidate
+
+
+def extract_ahk_code_from_text(text: str) -> str:
+    source_text = str(text or "")
+    matches = list(AHK_CODE_BLOCK_PATTERN.finditer(source_text))
+    if not matches:
+        raise ValueError(
+            "AHK_CODE_TAGS_MISSING|AHK code block tags are required.|Response text should contain <<<archivo ahk>>> and <<</archivo ahk>>> tags.|No tagged AHK code block was found in response.text."
+        )
+
+    extracted = matches[-1].group(1)
+    if not extracted.strip():
+        raise ValueError(
+            "AHK_CODE_EMPTY|AHK code block should contain code.|Tagged AHK code block should contain non-empty content.|Tagged AHK code block was empty."
+        )
+    return extracted.strip()
+
+
+def find_ahk_code_in_workflow_run(workflow_run: dict) -> str:
+    if not isinstance(workflow_run, dict):
+        raise ValueError(
+            "DEEPSEEK_WORKFLOW_RUN_MISSING|Workflow run payload should be present.|workflowRun should be a structured object.|workflowRun was missing or invalid."
+        )
+
+    turns = normalize_collection(workflow_run.get("turns"))
+    for turn in reversed(turns):
+        if not isinstance(turn, dict):
+            continue
+        response = turn.get("response") or {}
+        if not isinstance(response, dict):
+            continue
+        text = response.get("text")
+        if text is None:
+            continue
+        try:
+            return extract_ahk_code_from_text(str(text))
+        except ValueError as error:
+            if str(error).startswith("AHK_CODE_TAGS_MISSING|"):
+                continue
+            raise
+
+    raise ValueError(
+        "AHK_CODE_TAGS_MISSING|AHK code block tags are required.|At least one workflowRun.turns[*].response.text entry should contain <<<archivo ahk>>> and <<</archivo ahk>>> tags.|No tagged AHK code block was found in workflowRun.turns."
+    )
+
+
+def build_ahk_output_path(selected_file: StoredFile) -> Path:
+    return selected_file.path.parent / f"{selected_file.path.stem}.ahk"
 
 
 def build_output_payload(selected_file: StoredFile, payload: dict, timestamp: datetime) -> dict:
@@ -179,4 +230,32 @@ def write_deepseek_workflow_run_json(
         "outputPath": str(output_path),
         "fileName": output_path.name,
         "bytesWritten": len(output_text.encode("utf-8")),
+    }
+
+
+def write_deepseek_workflow_ahk_file(selected_file: StoredFile, payload: dict) -> dict:
+    workflow_run = payload.get("workflowRun") or {}
+    if not isinstance(workflow_run, dict):
+        raise ValueError("DEEPSEEK_WORKFLOW_RUN_MISSING|Workflow run payload should be present.|workflowRun should be a structured object.|workflowRun was missing or invalid.")
+
+    if payload.get("fileId") != selected_file.file_id:
+        raise ValueError("GATEWAY_SELECTED_FILE_MISMATCH|Selected file id mismatch.|Payload fileId should match FileStore selected fileId.|Payload fileId did not match selected fileId.")
+
+    if not str(payload.get("traceId") or "").strip():
+        raise ValueError("TRACE_ID_REQUIRED|Trace id is required.|payload.traceId should be a non-empty string.|traceId was empty or missing.")
+
+    if not str(payload.get("workflowId") or "").strip():
+        raise ValueError("WORKFLOW_ID_REQUIRED|Workflow id is required.|payload.workflowId should be a non-empty string.|workflowId was empty or missing.")
+
+    output_path = build_ahk_output_path(selected_file)
+    overwritten = output_path.exists()
+    ahk_code = find_ahk_code_in_workflow_run(workflow_run)
+    output_path.write_text(ahk_code, encoding="utf-8")
+
+    return {
+        "status": "completed",
+        "outputPath": str(output_path),
+        "fileName": output_path.name,
+        "bytesWritten": len(ahk_code.encode("utf-8")),
+        "overwritten": overwritten,
     }

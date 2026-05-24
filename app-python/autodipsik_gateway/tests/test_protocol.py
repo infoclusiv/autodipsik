@@ -35,3 +35,8 @@ def test_save_deepseek_response_json_message_passes() -> None:
 def test_save_deepseek_workflow_run_json_message_passes() -> None:
     message = parse_message('{"id":"4","type":"SAVE_DEEPSEEK_WORKFLOW_RUN_JSON","payload":{"fileId":"abc","traceId":"trace_1","workflowId":"wf_1","workflowRun":{"status":"completed"}}}')
     assert message["type"] == "SAVE_DEEPSEEK_WORKFLOW_RUN_JSON"
+
+
+def test_save_deepseek_workflow_ahk_file_message_passes() -> None:
+    message = parse_message('{"id":"5","type":"SAVE_DEEPSEEK_WORKFLOW_AHK_FILE","payload":{"fileId":"abc","traceId":"trace_1","workflowId":"wf_1","workflowRun":{"status":"completed"}}}')
+    assert message["type"] == "SAVE_DEEPSEEK_WORKFLOW_AHK_FILE"

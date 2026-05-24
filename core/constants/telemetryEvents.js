@@ -44,7 +44,10 @@
     DEEPSEEK_RESPONSE_JSON_SAVE_FAILED: "extension.gateway.deepseek_response_json.save.failed",
     DEEPSEEK_WORKFLOW_RUN_JSON_SAVE_STARTED: "extension.gateway.deepseek_workflow_run_json.save.started",
     DEEPSEEK_WORKFLOW_RUN_JSON_SAVE_COMPLETED: "extension.gateway.deepseek_workflow_run_json.save.completed",
-    DEEPSEEK_WORKFLOW_RUN_JSON_SAVE_FAILED: "extension.gateway.deepseek_workflow_run_json.save.failed"
+    DEEPSEEK_WORKFLOW_RUN_JSON_SAVE_FAILED: "extension.gateway.deepseek_workflow_run_json.save.failed",
+    DEEPSEEK_WORKFLOW_AHK_FILE_SAVE_STARTED: "extension.gateway.deepseek_workflow_ahk_file.save.started",
+    DEEPSEEK_WORKFLOW_AHK_FILE_SAVE_COMPLETED: "extension.gateway.deepseek_workflow_ahk_file.save.completed",
+    DEEPSEEK_WORKFLOW_AHK_FILE_SAVE_FAILED: "extension.gateway.deepseek_workflow_ahk_file.save.failed"
   };
 
   NewSiteCore.DeepSeekTelemetryEvents = {

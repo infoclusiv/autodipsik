@@ -161,12 +161,67 @@
     }
   }
 
+  function validateSaveDeepSeekWorkflowAhkFileRequest(input, context) {
+    ensureObject(input, {
+      contractName: "SaveDeepSeekWorkflowAhkFileRequest",
+      messageType: context && context.messageType ? context.messageType : "",
+      expected: "A save request payload with fileId, traceId, workflowId, and workflowRun.",
+      actual: "The workflow AHK save request payload was missing or invalid."
+    });
+
+    MessageContracts.requireFields(input, ["fileId", "traceId", "workflowId", "workflowRun"], {
+      contractName: "SaveDeepSeekWorkflowAhkFileRequest",
+      messageType: context && context.messageType ? context.messageType : ""
+    });
+
+    ensureObject(input.workflowRun, {
+      contractName: "SaveDeepSeekWorkflowAhkFileRequest.workflowRun",
+      messageType: context && context.messageType ? context.messageType : "",
+      expected: "workflowRun should be an object containing the conditional workflow execution result.",
+      actual: "workflowRun was missing or invalid."
+    });
+  }
+
+  function validateSaveDeepSeekWorkflowAhkFileResponse(input, context) {
+    ensureObject(input, {
+      contractName: "SaveDeepSeekWorkflowAhkFileResponse",
+      messageType: context && context.messageType ? context.messageType : "",
+      expected: "A gateway workflow AHK save response with output metadata.",
+      actual: "The workflow AHK save response payload was missing or invalid."
+    });
+
+    MessageContracts.requireFields(input, ["status", "outputPath", "fileName", "bytesWritten"], {
+      contractName: "SaveDeepSeekWorkflowAhkFileResponse",
+      messageType: context && context.messageType ? context.messageType : ""
+    });
+
+    if (typeof input.bytesWritten !== "number" || input.bytesWritten <= 0) {
+      throw Errors.createError("CONTRACT_VALIDATION_FAILED", "bytesWritten must be a positive number.", {
+        expected: "workflow AHK save response bytesWritten should be greater than 0.",
+        actual: "bytesWritten was " + String(input.bytesWritten) + ".",
+        messageType: context && context.messageType ? context.messageType : "",
+        probableCause: "core/contracts/gatewayContracts.js"
+      });
+    }
+
+    if (typeof input.overwritten !== "undefined" && typeof input.overwritten !== "boolean") {
+      throw Errors.createError("CONTRACT_VALIDATION_FAILED", "overwritten must be a boolean when provided.", {
+        expected: "workflow AHK save response overwritten should be a boolean when present.",
+        actual: "overwritten was " + typeof input.overwritten + ".",
+        messageType: context && context.messageType ? context.messageType : "",
+        probableCause: "core/contracts/gatewayContracts.js"
+      });
+    }
+  }
+
   NewSiteCore.GatewayContracts = {
     validateDeepSeekCapturedResponse: validateDeepSeekCapturedResponse,
     validateFileContentRequest: validateFileContentRequest,
     validateSaveDeepSeekResponseJsonRequest: validateSaveDeepSeekResponseJsonRequest,
     validateSaveDeepSeekResponseJsonResponse: validateSaveDeepSeekResponseJsonResponse,
     validateSaveDeepSeekWorkflowRunJsonRequest: validateSaveDeepSeekWorkflowRunJsonRequest,
-    validateSaveDeepSeekWorkflowRunJsonResponse: validateSaveDeepSeekWorkflowRunJsonResponse
+    validateSaveDeepSeekWorkflowRunJsonResponse: validateSaveDeepSeekWorkflowRunJsonResponse,
+    validateSaveDeepSeekWorkflowAhkFileRequest: validateSaveDeepSeekWorkflowAhkFileRequest,
+    validateSaveDeepSeekWorkflowAhkFileResponse: validateSaveDeepSeekWorkflowAhkFileResponse
   };
 })(globalThis);

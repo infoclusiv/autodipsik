@@ -59,6 +59,20 @@
     });
   }
 
+  async function saveWorkflowAhkFileIfPossible(options) {
+    if (!options.selectedFile || !options.selectedFile.fileId || !options.workflowRun) {
+      return null;
+    }
+
+    return NewSiteBackground.GatewayFileService.saveDeepSeekWorkflowAhkFile({
+      traceId: options.traceId,
+      workflowId: options.workflowId,
+      fileId: options.selectedFile.fileId,
+      selectedFile: options.selectedFile,
+      workflowRun: options.workflowRun
+    });
+  }
+
   async function runStage(traceId, workflowId, stageName, fn) {
     await emitWorkflowEvent(TELEMETRY_EVENTS.CONDITIONAL_WORKFLOW_NODE_STARTED, "info", traceId, workflowId, "Conditional workflow stage started", {
       nodeId: stageName,
@@ -113,6 +127,7 @@
     let pageState = null;
     let workflowRun = null;
     let workflowRunJsonSave = null;
+    let workflowAhkFileSave = null;
 
     try {
       workflowDefinition = ConditionalWorkflowContracts.validateConditionalWorkflowDefinition(input.definition, {
@@ -287,6 +302,14 @@
         definition: workflowDefinition,
         workflowRun: workflowRun
       });
+      workflowAhkFileSave = await runStage(traceId, workflowId, "save_workflow_ahk_file", async function persistWorkflowAhkFile() {
+        return saveWorkflowAhkFileIfPossible({
+          traceId: traceId,
+          workflowId: workflowId,
+          selectedFile: selectedFile,
+          workflowRun: workflowRun
+        });
+      });
 
       await emitWorkflowEvent(
         TELEMETRY_EVENTS.CONDITIONAL_WORKFLOW_COMPLETED,
@@ -309,6 +332,7 @@
         pageState: pageState,
         workflowRun: workflowRun,
         workflowRunJsonSave: workflowRunJsonSave,
+        workflowAhkFileSave: workflowAhkFileSave,
         error: null
       };
     } catch (error) {
@@ -353,6 +377,7 @@
         pageState: pageState,
         workflowRun: workflowRun,
         workflowRunJsonSave: workflowRunJsonSave,
+        workflowAhkFileSave: workflowAhkFileSave,
         error: structured
       };
     }

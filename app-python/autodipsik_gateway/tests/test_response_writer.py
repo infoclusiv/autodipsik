@@ -5,7 +5,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from autodipsik_gateway.files.file_store import StoredFile
-from autodipsik_gateway.files.response_writer import write_deepseek_response_json, write_deepseek_workflow_run_json
+from autodipsik_gateway.files.response_writer import (
+    build_ahk_output_path,
+    extract_ahk_code_from_text,
+    find_ahk_code_in_workflow_run,
+    write_deepseek_response_json,
+    write_deepseek_workflow_ahk_file,
+    write_deepseek_workflow_run_json,
+)
 
 
 def build_selected_file(path: Path) -> StoredFile:
@@ -96,6 +103,129 @@ def build_workflow_run_payload(file_id: str = "file-123") -> dict:
             "error": None,
         },
     }
+
+
+def test_extract_ahk_code_from_text_returns_only_tagged_code() -> None:
+    text = (
+        "prefix\n"
+        "<<<archivo ahk>>>\n"
+        "#SingleInstance force\n"
+        "Send, ABC{Tab}123\n"
+        "<<</archivo ahk>>>\n"
+        "suffix"
+    )
+    assert extract_ahk_code_from_text(text) == "#SingleInstance force\nSend, ABC{Tab}123"
+
+
+def test_extract_ahk_code_preserves_ahk_tokens() -> None:
+    text = (
+        "<<<archivo ahk>>>\n"
+        "; comentario\n"
+        '#SingleInstance force\nSend, "C:\\temp\\demo.txt"{Tab}{Down}, value\n'
+        "<<</archivo ahk>>>"
+    )
+    assert extract_ahk_code_from_text(text) == (
+        "; comentario\n"
+        '#SingleInstance force\nSend, "C:\\temp\\demo.txt"{Tab}{Down}, value'
+    )
+
+
+def test_extract_ahk_code_rejects_missing_tags() -> None:
+    try:
+        extract_ahk_code_from_text("sin etiquetas")
+        assert False
+    except ValueError as error:
+        assert str(error).startswith("AHK_CODE_TAGS_MISSING|")
+
+
+def test_extract_ahk_code_rejects_empty_tagged_block() -> None:
+    try:
+        extract_ahk_code_from_text("<<<archivo ahk>>>\n \n<<</archivo ahk>>>")
+        assert False
+    except ValueError as error:
+        assert str(error).startswith("AHK_CODE_EMPTY|")
+
+
+def test_find_ahk_code_in_workflow_run_prefers_last_tagged_turn() -> None:
+    workflow_run = {
+        "turns": [
+            {"response": {"text": "primer turno sin etiquetas"}},
+            {"response": {"text": "<<<archivo ahk>>>\nMsgBox, old\n<<</archivo ahk>>>"}},
+            {"response": {"text": "<<<archivo ahk>>>\n#SingleInstance force\nSend, ABC{Tab}123\n<<</archivo ahk>>>"}},
+        ]
+    }
+    assert find_ahk_code_in_workflow_run(workflow_run) == "#SingleInstance force\nSend, ABC{Tab}123"
+
+
+def test_find_ahk_code_in_workflow_run_rejects_missing_workflow_run() -> None:
+    try:
+        find_ahk_code_in_workflow_run(None)  # type: ignore[arg-type]
+        assert False
+    except ValueError as error:
+        assert str(error).startswith("DEEPSEEK_WORKFLOW_RUN_MISSING|")
+
+
+def test_find_ahk_code_in_workflow_run_rejects_missing_tags() -> None:
+    try:
+        find_ahk_code_in_workflow_run({"turns": [{"response": {"text": "sin etiquetas"}}]})
+        assert False
+    except ValueError as error:
+        assert str(error).startswith("AHK_CODE_TAGS_MISSING|")
+
+
+def test_build_ahk_output_path_uses_excel_basename_beside_source_file(tmp_path: Path) -> None:
+    excel_path = tmp_path / "student-file.xlsx"
+    excel_path.write_bytes(b"xlsx")
+    output_path = build_ahk_output_path(build_selected_file(excel_path))
+    assert output_path == tmp_path / "student-file.ahk"
+
+
+def test_write_deepseek_workflow_ahk_file_writes_beside_selected_excel(tmp_path: Path) -> None:
+    excel_path = tmp_path / "student-file.xlsx"
+    excel_path.write_bytes(b"xlsx")
+    payload = {
+        "fileId": "file-123",
+        "traceId": "trace_workflow_123",
+        "workflowId": "workflow_test",
+        "workflowRun": {
+            "status": "completed",
+            "turns": [
+                {
+                    "nodeId": "prompt_pregrado",
+                    "response": {
+                        "text": "<<<archivo ahk>>>\n#SingleInstance force\nSend, ABC{Tab}123\n<<</archivo ahk>>>",
+                    },
+                }
+            ],
+        },
+    }
+    result = write_deepseek_workflow_ahk_file(build_selected_file(excel_path), payload)
+    output_path = Path(result["outputPath"])
+    assert output_path == tmp_path / "student-file.ahk"
+    assert output_path.read_text(encoding="utf-8") == "#SingleInstance force\nSend, ABC{Tab}123"
+    assert result["fileName"] == "student-file.ahk"
+    assert result["overwritten"] is False
+
+
+def test_write_deepseek_workflow_ahk_file_reports_overwrite(tmp_path: Path) -> None:
+    excel_path = tmp_path / "student-file.xlsx"
+    excel_path.write_bytes(b"xlsx")
+    selected_file = build_selected_file(excel_path)
+    payload = {
+        "fileId": "file-123",
+        "traceId": "trace_workflow_123",
+        "workflowId": "workflow_test",
+        "workflowRun": {
+            "status": "completed",
+            "turns": [{"response": {"text": "<<<archivo ahk>>>\nMsgBox, first\n<<</archivo ahk>>>"}}],
+        },
+    }
+    write_deepseek_workflow_ahk_file(selected_file, payload)
+    payload["workflowRun"]["turns"][0]["response"]["text"] = "<<<archivo ahk>>>\nMsgBox, second\n<<</archivo ahk>>>"
+    result = write_deepseek_workflow_ahk_file(selected_file, payload)
+    output_path = Path(result["outputPath"])
+    assert result["overwritten"] is True
+    assert output_path.read_text(encoding="utf-8") == "MsgBox, second"
 
 
 def test_writes_json_beside_selected_excel(tmp_path: Path) -> None:

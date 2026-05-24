@@ -48,6 +48,7 @@
     const conditionalWorkflowVariables = conditionalWorkflowRun.variables || {};
     const conditionalWorkflowVisited = conditionalWorkflowRun.visitedNodeIds || [];
     const workflowRunJsonSave = conditionalWorkflowResult.workflowRunJsonSave || null;
+    const workflowAhkFileSave = conditionalWorkflowResult.workflowAhkFileSave || null;
     const error = store.lastError || lastRunSummary.error || null;
 
     root.innerHTML = [
@@ -87,6 +88,9 @@
       (workflowRunJsonSave
         ? "<p class='field-help'>Workflow run JSON saved: " + escapeHtml(workflowRunJsonSave.fileName || "Unknown") + "</p>"
         : ""),
+      (workflowAhkFileSave
+        ? "<p class='field-help'>AutoHotkey file saved: " + escapeHtml(workflowAhkFileSave.fileName || "Unknown") + "</p>"
+        : ""),
       (conditionalWorkflowResult.status
         ? "<div class='stack-blocks'>"
           + "<div><label>Visited nodes</label>" + renderCompactJson(conditionalWorkflowVisited) + "</div>"
@@ -118,6 +122,9 @@
       "</div>",
       (workflowRunJsonSave
         ? "<p class='field-help'>Workflow run JSON saved: " + escapeHtml(workflowRunJsonSave.fileName || "Unknown") + "</p>"
+        : ""),
+      (workflowAhkFileSave
+        ? "<p class='field-help'>AutoHotkey file saved: " + escapeHtml(workflowAhkFileSave.fileName || "Unknown") + "</p>"
         : ""),
       "</div>",
       "<div class='card'>",
