@@ -1,10 +1,12 @@
 # Current Modularization Map
 
-Date: 2026-05-17
+Date: 2026-05-24
 
 ## Scope
 
-This document captures the current runtime structure after the background modularization and DeepSeek + Python gateway integration. It is the current architecture reference for active runtime wiring, including the retained `newsite` template/lab path.
+This document captures the active runtime structure after the conditional-workflow, DeepSeek content-script, sidepanel, and Python gateway modularization phases.
+
+It is intended to reflect the actual current runtime owners and loader order, not historical one-click or pre-gateway architecture.
 
 ## Runtime Entrypoints
 
@@ -12,17 +14,24 @@ This document captures the current runtime structure after the background modula
 
 `manifest.json` registers `background-main.js` as the MV3 service worker.
 
-`background-main.js` is the composition root and script loader. It loads:
+`background-main.js` is the composition root and script loader. It loads, in order:
 
-1. core constants, contracts, storage, telemetry, diagnostics, gateway protocol, and gateway client modules
-2. site configuration modules for `sites/newsite/*` and `sites/deepseek/*`
-3. background services under `background/services/*`
-4. the one-click workflow under `background/workflows/deepseekOneClickWorkflow.js`
-5. message handlers under `background/messageHandlers/*`
-6. `background/messageRouter.js`
-7. `background/bootstrap.js`
+1. core constants, contracts, telemetry, storage, and diagnostics modules
+2. core conditional-workflow helpers and engine
+3. gateway protocol/client and shared workflow runner utilities
+4. `sites/newsite/*` and `sites/deepseek/*` configuration/profile modules
+5. background services under `background/services/*`
+6. background workflows:
+   - `background/workflows/deepseekPromptTurnRunner.js`
+   - `background/workflows/deepseekConditionalWorkflowSupport.js`
+   - `background/workflows/deepseekConditionalWorkflow.js`
+   - `background/workflows/deepseekBatchItemRunner.js`
+   - `background/workflows/deepseekBatchConditionalWorkflow.js`
+7. background message handlers under `background/messageHandlers/*`
+8. `background/messageRouter.js`
+9. `background/bootstrap.js`
 
-After loading, `background-main.js` only starts the background through:
+After load, the only direct startup call is:
 
 ```text
 NewSiteBackground.BackgroundBootstrap.start()
@@ -34,33 +43,67 @@ NewSiteBackground.BackgroundBootstrap.start()
 
 `sidepanel/sidepanel.html` loads:
 
-1. shared core contracts and utilities
-2. newsite and DeepSeek site profile modules
-3. sidepanel shared UI helpers
-4. `profileEditor/*`
-5. `automationTester/*`
-6. `diagnostics/*`
-7. `sidepanel/bootstrap.js`
+1. shared core config/constants/storage modules
+2. shared conditional workflow draft/sample modules:
+   - `core/workflow/conditionalWorkflowDraftStorage.js`
+   - `core/workflow/conditionalWorkflowSamples.js`
+   - `core/workflow/conditionalWorkflowDraftSession.js`
+3. shared telemetry/contracts/diagnostics helpers
+4. site profile modules for `newsite` and DeepSeek
+5. sidepanel shared UI modules
+6. `profileEditor/*`
+7. `automationTester/*`
+8. `diagnostics/*`
+9. `sidepanel/bootstrap.js`
 
-`sidepanel/bootstrap.js` mounts:
+Active Automation Tester composition is:
 
-- `NewSiteSidepanel.ProfileEditorController`
-- `NewSiteSidepanel.AutomationTesterController`
-- `NewSiteSidepanel.DiagnosticsController`
+```text
+automationTester.store.js
+  -> automationTester.adapters.js
+  -> automationRunOrchestrator.js
+  -> automationTester.sections.js
+  -> automationTester.render.js
+  -> automationTester.controller.js
+```
+
+### Workflow Lab
+
+`workflowLab/workflowLab.html` loads:
+
+1. shared core config/constants/storage modules
+2. `core/workflow/conditionalWorkflowDraftStorage.js`
+3. `core/workflow/conditionalWorkflowSamples.js`
+4. `core/workflow/conditionalWorkflowDraftSession.js`
+5. `sites/deepseek/config.js`
+6. `workflowLab.store.js`
+7. `workflowLab.render.js`
+8. `workflowLab.controller.js`
+9. `workflowLab/bootstrap.js`
 
 ### Content scripts
 
 `manifest.json` still registers two active content-script chains:
 
-- `https://example.com/*` -> `sites/newsite/*` template/lab flow
+- `https://example.com/*` -> `sites/newsite/*`
 - `https://chat.deepseek.com/*` -> `sites/deepseek/*`
 
-For DeepSeek, the active end of the chain is:
+The active DeepSeek chain now loads:
 
-```text
-sites/deepseek/chatAutomator.js
-  -> sites/deepseek/content.js
-```
+1. core constants/contracts/diagnostics/runtime helpers
+2. `sites/deepseek/config.js`
+3. `sites/deepseek/siteProfile.js`
+4. `sites/deepseek/selectors.js`
+5. `sites/deepseek/domHelpers.js`
+6. `sites/deepseek/pageState.js`
+7. `sites/deepseek/filePayloadHelpers.js`
+8. `sites/deepseek/diagnostics/deepseekComposerProbe.js`
+9. `sites/deepseek/responseCapture.js`
+10. `sites/deepseek/chatAutomatorReadiness.js`
+11. `sites/deepseek/chatAutomatorSteps.js`
+12. `sites/deepseek/chatAutomator.js`
+13. `sites/deepseek/contentHandlers.js`
+14. `sites/deepseek/content.js`
 
 ### Python gateway
 
@@ -73,153 +116,225 @@ app-python/run_gateway.py
   -> autodipsik_gateway/websocket/handlers.py
 ```
 
-## Background Delegation Map
+`handlers.py` is now a dispatcher over:
 
-### `background-main.js`
+- `autodipsik_gateway/websocket/file_handlers.py`
+- `autodipsik_gateway/websocket/save_handlers.py`
 
-Current role:
-
-- service-worker composition root
-- script loader
-- bootstrap trigger
-
-It does not own the background business logic directly.
+## Background Ownership
 
 ### `background/bootstrap.js`
 
-Current role:
+Owns:
 
-- hydrates telemetry on startup
-- configures sidepanel behavior
-- updates runtime status snapshots
-- registers Chrome lifecycle listeners
-- registers the `chrome.runtime.onMessage` listener that delegates into `MessageRouter`
+- background startup wiring
+- Chrome lifecycle listeners
+- sidepanel behavior integration
+- runtime status refresh orchestration
+- `chrome.runtime.onMessage` registration through the message router
 
 ### `background/messageRouter.js`
 
-Current role:
+Owns:
 
-- validates incoming runtime messages
-- attaches a trace ID
-- emits background message-received and message-failed telemetry
-- routes message types to specific handler modules
-- normalizes unsupported-message failures
+- message validation and trace ID normalization
+- routing by message type
+- background telemetry for message receipt/failure
+- unsupported-message normalization
 
 ### `background/messageHandlers/*`
 
-Current role:
+Owns:
 
-- `profileHandlers.js`: profile get/save/reset behavior
-- `diagnosticsHandlers.js`: diagnostics export and gateway-aware diagnostics export
-- `gatewayHandlers.js`: gateway status, connect, disconnect, file selection, upload execution
-- `tabHandlers.js`: active-tab and DeepSeek-aware selector/page-state forwarding, DeepSeek tab ensure
-- `automationHandlers.js`: automation request handling and one-click entry delegation
+- `profileHandlers.js`: profile get/save/reset
+- `diagnosticsHandlers.js`: diagnostics export flows
+- `gatewayHandlers.js`: gateway status/connect/disconnect and file-selection requests
+- `tabHandlers.js`: active-tab forwarding, DeepSeek tab ensure, selector/page-state forwarding
+- `automationHandlers.js`: conditional workflow and batch workflow entrypoints
 
 ### `background/services/*`
 
-Current role:
+Owns:
 
-- `siteProfileResolver.js`: resolves newsite versus DeepSeek site profile services
-- `runtimeStatusService.js`: computes and stores runtime status snapshots
-- `activeTabForwarder.js`: forwards tab-scoped actions to the correct content script
-- `deepseekTabService.js`: ensures, locates, and pings the DeepSeek tab/content script path
-- `gatewayFileService.js`: resolves gateway file metadata and file payloads for automation
+- `siteProfileResolver.js`: site profile service selection
+- `runtimeStatusService.js`: runtime status snapshot computation
+- `activeTabForwarder.js`: tab-scoped message forwarding
+- `deepseekTabService.js`: DeepSeek tab discovery/readiness forwarding
+- `gatewayPersistenceService.js`: gateway save-path persistence helpers
+- `gatewayFileService.js`: gateway file metadata, file payload, and file selection facade
 
-### `background/workflows/deepseekOneClickWorkflow.js`
+### `background/workflows/*`
 
-Current role:
+Owns:
 
-- owns one-click orchestration for the DeepSeek upload workflow
-- coordinates gateway readiness, file selection, DeepSeek tab readiness, preflight, and actual automation stages through delegated services and handlers
+- `deepseekPromptTurnRunner.js`: single prompt-turn execution primitive used by conditional workflow nodes
+- `deepseekConditionalWorkflowSupport.js`: normalization, telemetry, persistence wrappers, and stage helpers for conditional workflow runs
+- `deepseekConditionalWorkflow.js`: top-level single conditional workflow orchestration
+- `deepseekBatchItemRunner.js`: per-file batch item execution
+- `deepseekBatchConditionalWorkflow.js`: sequential batch orchestration and batch result shaping
 
-## Canonical Runtime Flow
+## Sidepanel Ownership
 
-```text
-sidepanel/automationTester.controller.js
-  -> sidepanel/automationRunOrchestrator.js
-  -> chrome.runtime.sendMessage(...)
-  -> background/messageRouter.js
-  -> background/messageHandlers/*
-  -> background/services/gatewayFileService.js
-  -> core/gatewayClient.js
-  -> Python WebSocket gateway
-  -> background/services/deepseekTabService.js
-  -> sites/deepseek/content.js
-  -> sites/deepseek/chatAutomator.js
-```
+### Shared workflow draft/sample modules
 
-Direct sidepanel actions also use the same background route for:
+Shared ownership:
 
-- gateway connect and disconnect
-- file selection
-- diagnostics export
-- page-state detection
-- dry-run automation
+- `conditionalWorkflowSamples.js`: shared sample workflow payload
+- `conditionalWorkflowDraftSession.js`: shared debounce/session persistence logic
+- `conditionalWorkflowDraftStorage.js`: storage-backed draft persistence
 
-## Active UI Ownership
+These are shared by both Automation Tester and Workflow Lab.
 
-### `sidepanel/automationTester/automationTester.controller.js`
+### `sidepanel/automationTester/*`
 
-This is the active DeepSeek workflow control surface. It currently owns:
+Owns:
 
-- runtime status refresh
-- gateway status refresh
-- gateway connect and disconnect
-- Excel file selection through the Python gateway
-- page-state detection
-- diagnostics export
-- dry-run execution
-- one-click execution
-- render lifecycle and event binding
+- `automationTester.store.js`: UI state container
+- `automationTester.adapters.js`: gateway-status application, file selection normalization, selected-file lookup, conditional workflow input building
+- `automationRunOrchestrator.js`: runtime message orchestration for workflow execution
+- `automationTester.sections.js`: card-level HTML section builders
+- `automationTester.render.js`: view-model assembly and full-screen composition
+- `automationTester.controller.js`: DOM binding, rerendering, message sending, toasts, and user action orchestration
 
-`sidepanel/deepseekUpload/*` is no longer part of the active sidepanel path.
+### `workflowLab/*`
+
+Owns:
+
+- workflow-lab-specific state/render/controller/bootstrap
+- full-window conditional workflow editing and execution surface
+- shared draft/session integration with Automation Tester
 
 ## DeepSeek Runtime Ownership
 
 ### `sites/deepseek/content.js`
 
-This file currently owns:
+Owns only:
 
-- content-script singleton guard
-- runtime message listener for DeepSeek-scoped actions
-- selector tests
-- page-state detection
-- DeepSeek automation entrypoint
-- content-script ping
+- singleton guard
+- content-script loaded timestamp
+- `chrome.runtime.onMessage` registration
+- delegation to `DeepSeekAutomation.DeepSeekContentHandlers.handleMessage(message)`
+- structured catch behavior for failed message handling
+
+### `sites/deepseek/contentHandlers.js`
+
+Owns:
+
+- selector test/test-all handling
+- page-state detection handling
+- `RUN_AUTOMATION` entry delegation
+- DeepSeek content ping
+- diagnostics payload response
 - browser-side file attachment from gateway payloads
+
+### `sites/deepseek/chatAutomatorReadiness.js`
+
+Owns:
+
+- attachment-readiness interpretation
+- readiness failure aggregation
+- attachment stability failure aggregation
+- shared prompt/send-button helper interpretation functions safe to reuse
+
+### `sites/deepseek/chatAutomatorSteps.js`
+
+Owns:
+
+- construction of the `steps` array used by `runMainAutomation(...)`
+- stable step names and order from `validate_input` through `finalize`
+- explicit dependency consumption through the `helpers` object
 
 ### `sites/deepseek/chatAutomator.js`
 
-This file currently owns:
+Owns:
 
-- workflow step execution
-- file attachment flow inside DeepSeek
-- chat input and send button heuristics
-- selector health and diagnostics collection
-- automation result and diagnostic package creation
+- `DeepSeekAutomation.ChatAutomator.runMainAutomation(...)`
+- input normalization
+- helper functions used by readiness loops and step execution
+- `WorkflowRunner.runWorkflow(...)` invocation
+- failure diagnostic package assembly
+- `testAllSelectors(...)`
 
-## Python Gateway Runtime
+## Python Gateway Ownership
 
-### `app-python/autodipsik_gateway/websocket/server.py`
+### `autodipsik_gateway/websocket/handlers.py`
 
-This module currently:
+Owns:
 
-- creates `FileStore`, `JsonlLogger`, and `GatewayHandlers`
-- accepts websocket connections
-- parses incoming messages
-- delegates protocol handling to `GatewayHandlers`
-- sends JSON responses back to the extension
-- logs gateway lifecycle and per-message events
+- top-level protocol dispatch
+- `HELLO` and `PING`
+- delegation of file messages to `GatewayFileHandlers`
+- delegation of save messages to `GatewaySaveHandlers`
 
-## Historical Notes
+### `autodipsik_gateway/websocket/file_handlers.py`
 
-- `docs/repo-discovery-deepseek-websocket-upload.md` is a historical discovery document from before the Python gateway and DeepSeek runtime were added. It should not be treated as the latest architecture source.
-- Earlier descriptions that treated `background-main.js` as the owner of all background orchestration are no longer accurate. The active runtime is handler- and service-driven behind `background/bootstrap.js` and `background/messageRouter.js`.
+Owns:
 
-## Cleanup-Relevant Notes
+- `FILE_PICKER_OPEN_REQUEST`
+- `FILE_PICKER_OPEN_MULTIPLE_REQUEST`
+- `FILE_SELECT_BY_ID_REQUEST`
+- `FILE_CONTENT_REQUEST`
+- `FILE_CONTENT_BY_PATH_REQUEST`
+- shared file validation used by those routes
 
-- `sites/newsite/*` is intentionally retained as the template/lab module.
-- The `https://example.com/*` manifest registration is intentionally retained for that template/lab flow.
-- The production DeepSeek flow lives in `sites/deepseek/*` and the Python gateway path under `app-python/`.
-- `runtime/python-events.jsonl` is a generated runtime artifact path and remains covered by `.gitignore`.
-- The removed `sidepanel/deepseekUpload/*` module was not part of the active sidepanel wiring.
+### `autodipsik_gateway/websocket/save_handlers.py`
+
+Owns:
+
+- `SAVE_DEEPSEEK_RESPONSE_JSON`
+- `SAVE_DEEPSEEK_WORKFLOW_RUN_JSON`
+- `SAVE_DEEPSEEK_WORKFLOW_AHK_FILE`
+- shared selected-file validation for save routes
+
+### `autodipsik_gateway/files/response_writer.py`
+
+Still owns:
+
+- DeepSeek response JSON writing
+- workflow-run JSON writing
+- workflow AHK extraction/writing
+
+This file remains the persistence writer and was not modularized further in these phases.
+
+## Canonical Runtime Flows
+
+### Conditional workflow from sidepanel
+
+```text
+sidepanel/automationTester.controller.js
+  -> automationRunOrchestrator.js
+  -> chrome.runtime.sendMessage(...)
+  -> background/messageRouter.js
+  -> background/messageHandlers/automationHandlers.js
+  -> background/workflows/deepseekConditionalWorkflow.js
+  -> background/workflows/deepseekPromptTurnRunner.js
+  -> background/services/deepseekTabService.js
+  -> sites/deepseek/content.js
+  -> sites/deepseek/contentHandlers.js
+  -> sites/deepseek/chatAutomator.js
+  -> sites/deepseek/chatAutomatorSteps.js
+```
+
+### Gateway file/save path
+
+```text
+background/services/gatewayFileService.js
+  -> core/gatewayClient.js
+  -> autodipsik_gateway/websocket/handlers.py
+  -> autodipsik_gateway/websocket/file_handlers.py
+  -> autodipsik_gateway/websocket/save_handlers.py
+  -> autodipsik_gateway/files/response_writer.py
+```
+
+## Documentation Integrity Notes
+
+- `background/workflows/deepseekOneClickWorkflow.js` is not an active runtime owner and should not be treated as the current workflow entrypoint.
+- `sidepanel/deepseekUpload/*` is not part of the active sidepanel runtime.
+- `sites/newsite/*` remains intentionally loaded as the template/lab path.
+- `runtime/python-events.jsonl` remains a generated runtime artifact path.
+
+## Verification Notes
+
+- Python `pytest` commands described in the plan remain blocked in this local environment because `pytest` is not installed.
+- Gateway startup and direct Python smoke runs have been used locally to validate the current modularization where feasible from the CLI.
+- Manual Chrome extension regression still needs to be completed using `docs/testing/manual-regression-checklist.md`.

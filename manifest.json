@@ -90,7 +90,10 @@
         "sites/deepseek/filePayloadHelpers.js",
         "sites/deepseek/diagnostics/deepseekComposerProbe.js",
         "sites/deepseek/responseCapture.js",
+        "sites/deepseek/chatAutomatorReadiness.js",
+        "sites/deepseek/chatAutomatorSteps.js",
         "sites/deepseek/chatAutomator.js",
+        "sites/deepseek/contentHandlers.js",
         "sites/deepseek/content.js"
       ],
       "run_at": "document_idle"

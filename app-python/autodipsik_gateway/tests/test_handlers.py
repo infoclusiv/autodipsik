@@ -87,7 +87,7 @@ def test_multi_file_picker_selects_and_sets_first_active_file(tmp_path: Path, mo
     def fake_open_multi_file_picker(*_args, **_kwargs) -> MultiFileSelectionResult:
         return MultiFileSelectionResult(selected=True, paths=[first, second])
 
-    monkeypatch.setattr("autodipsik_gateway.websocket.handlers.open_multi_file_picker", fake_open_multi_file_picker)
+    monkeypatch.setattr("autodipsik_gateway.websocket.file_handlers.open_multi_file_picker", fake_open_multi_file_picker)
 
     response = asyncio.run(
         handlers.handle({"id": "test_multi", "type": "FILE_PICKER_OPEN_MULTIPLE_REQUEST", "payload": {}})

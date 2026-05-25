@@ -1,143 +1,40 @@
 (function initAutomationController(globalScope) {
   const NewSiteSidepanel = globalScope.NewSiteSidepanel = globalScope.NewSiteSidepanel || {};
+  const NewSiteCore = globalScope.NewSiteCore || {};
   const store = NewSiteSidepanel.AutomationTesterStore.state;
   const render = NewSiteSidepanel.AutomationTesterRender.render;
   const messaging = NewSiteSidepanel.ChromeMessaging;
   const Toast = NewSiteSidepanel.Toast;
+  const adapters = NewSiteSidepanel.AutomationTesterAdapters;
   const orchestrator = NewSiteSidepanel.AutomationRunOrchestrator;
-  const MESSAGE_TYPES = globalScope.NewSiteCore.MESSAGE_TYPES;
-  const draftStorage = globalScope.NewSiteCore && globalScope.NewSiteCore.ConditionalWorkflowDraftStorage;
+  const MESSAGE_TYPES = NewSiteCore.MESSAGE_TYPES;
+  const workflowSamples = NewSiteCore.ConditionalWorkflowSamples;
+  const draftSessionApi = NewSiteCore.ConditionalWorkflowDraftSession;
   const deepSeekConfig = globalScope.DeepSeekAutomation.DEEPSEEK_CONFIG;
-  const SAMPLE_CONDITIONAL_WORKFLOW = {
-    flowVersion: 1,
-    workflowId: "mvp_tipo_flow",
-    startNodeId: "prompt_1",
-    nodes: [
-      {
-        id: "prompt_1",
-        type: "prompt",
-        promptText: "Analyze the attached Excel briefly. At the end include exactly one marker: [[TIPO: tipo_1]] or [[TIPO: tipo_2]].",
-        attachFile: true,
-        waitForResponse: true,
-        nextNodeId: "extract_tipo"
-      },
-      {
-        id: "extract_tipo",
-        type: "regex_extract",
-        sourceNodeId: "prompt_1",
-        patterns: [
-          {
-            name: "tipo",
-            regex: "\\\\[\\\\[TIPO:\\\\s*(tipo_1|tipo_2)\\\\s*\\\\]\\\\]",
-            groupIndex: 1,
-            required: true
-          }
-        ],
-        nextNodeId: "decision_tipo"
-      },
-      {
-        id: "decision_tipo",
-        type: "condition",
-        variable: "tipo",
-        branches: [
-          { equals: "tipo_1", nextNodeId: "prompt_tipo_1" },
-          { equals: "tipo_2", nextNodeId: "prompt_tipo_2" }
-        ],
-        fallbackNextNodeId: "end_no_match"
-      },
-      {
-        id: "prompt_tipo_1",
-        type: "prompt",
-        promptText: "Continue with the tipo_1 follow-up and keep the answer brief.",
-        attachFile: false,
-        waitForResponse: true,
-        nextNodeId: "end"
-      },
-      {
-        id: "prompt_tipo_2",
-        type: "prompt",
-        promptText: "Continue with the tipo_2 follow-up and keep the answer brief.",
-        attachFile: false,
-        waitForResponse: true,
-        nextNodeId: "end"
-      },
-      {
-        id: "end_no_match",
-        type: "end",
-        reason: "No matching branch."
-      },
-      {
-        id: "end",
-        type: "end"
-      }
-    ]
-  };
 
   let rootNode;
-  let conditionalWorkflowDraftSaveTimer = null;
-  let conditionalWorkflowDraftSessionVersion = 0;
+  const draftSession = draftSessionApi && typeof draftSessionApi.create === "function"
+    ? draftSessionApi.create({
+      getText: function getDraftText() {
+        return store.conditionalWorkflowText;
+      },
+      setText: function setDraftText(text) {
+        store.conditionalWorkflowText = text;
+      },
+      onLoaded: function onDraftLoaded() {
+        rerender();
+      }
+    })
+    : null;
 
   function rerender() {
     render(rootNode);
     bindEvents();
   }
 
-  async function saveConditionalWorkflowDraft(text) {
-    if (!draftStorage || typeof draftStorage.saveDraft !== "function") {
-      return false;
-    }
-
-    try {
-      return await draftStorage.saveDraft(text);
-    } catch (error) {
-      return false;
-    }
-  }
-
-  function scheduleConditionalWorkflowDraftSave(text) {
-    if (conditionalWorkflowDraftSaveTimer) {
-      clearTimeout(conditionalWorkflowDraftSaveTimer);
-    }
-
-    conditionalWorkflowDraftSaveTimer = setTimeout(function persistDraft() {
-      conditionalWorkflowDraftSaveTimer = null;
-      saveConditionalWorkflowDraft(text).catch(function noop() {});
-    }, 250);
-  }
-
-  async function flushConditionalWorkflowDraftSave(text) {
-    if (conditionalWorkflowDraftSaveTimer) {
-      clearTimeout(conditionalWorkflowDraftSaveTimer);
-      conditionalWorkflowDraftSaveTimer = null;
-    }
-    return saveConditionalWorkflowDraft(text);
-  }
-
-  async function loadConditionalWorkflowDraft() {
-    if (!draftStorage || typeof draftStorage.loadDraft !== "function") {
-      return;
-    }
-
-    const loadVersion = conditionalWorkflowDraftSessionVersion;
-    const loadedDraft = await draftStorage.loadDraft();
-
-    if (conditionalWorkflowDraftSessionVersion !== loadVersion) {
-      return;
-    }
-
-    if (typeof loadedDraft !== "string" || loadedDraft === store.conditionalWorkflowText) {
-      return;
-    }
-
-    store.conditionalWorkflowText = loadedDraft;
-    rerender();
-  }
-
   function applyResponse(response) {
-    if (response && response.gatewayStatus) {
-      store.gatewayStatus = response.gatewayStatus;
-      store.selectedFile = response.gatewayStatus.selectedFile || store.selectedFile || null;
-      store.selectedFiles = response.gatewayStatus.selectedFiles || store.selectedFiles || [];
+    if (adapters && typeof adapters.applyGatewayStatusSnapshotToStore === "function") {
+      adapters.applyGatewayStatusSnapshotToStore(store, response);
     }
 
     if (response && response.status === "failed") {
@@ -168,9 +65,9 @@
     if (!applyResponse(response)) {
       return;
     }
-    store.gatewayStatus = response.gatewayStatus || null;
-    store.selectedFile = store.gatewayStatus ? store.gatewayStatus.selectedFile || null : null;
-    store.selectedFiles = store.gatewayStatus ? store.gatewayStatus.selectedFiles || [] : [];
+    if (adapters && typeof adapters.applyGatewayStatusToStore === "function") {
+      adapters.applyGatewayStatusToStore(store, response);
+    }
     rerender();
   }
 
@@ -181,9 +78,9 @@
     if (!applyResponse(response)) {
       return;
     }
-    store.gatewayStatus = response.gatewayStatus || null;
-    store.selectedFile = store.gatewayStatus ? store.gatewayStatus.selectedFile || null : null;
-    store.selectedFiles = store.gatewayStatus ? store.gatewayStatus.selectedFiles || [] : [];
+    if (adapters && typeof adapters.applyGatewayStatusToStore === "function") {
+      adapters.applyGatewayStatusToStore(store, response);
+    }
     store.lastError = null;
     rerender();
     Toast.showToast("Gateway connected.");
@@ -194,9 +91,9 @@
     if (!applyResponse(response)) {
       return;
     }
-    store.gatewayStatus = response.gatewayStatus || null;
-    store.selectedFile = null;
-    store.selectedFiles = [];
+    if (adapters && typeof adapters.applyGatewayStatusToStore === "function") {
+      adapters.applyGatewayStatusToStore(store, response);
+    }
     store.lastError = null;
     rerender();
   }
@@ -208,10 +105,9 @@
     if (!applyResponse(response)) {
       return;
     }
-    store.gatewayStatus = response.gatewayStatus || null;
-    store.selectedFile = response.file || (store.gatewayStatus ? store.gatewayStatus.selectedFile : null);
-    store.selectedFiles = store.gatewayStatus ? store.gatewayStatus.selectedFiles || [] : [];
-    store.fileSelectionResult = response.file || null;
+    if (adapters && typeof adapters.applyFileSelectionToStore === "function") {
+      adapters.applyFileSelectionToStore(store, response);
+    }
     store.lastError = null;
     rerender();
     Toast.showToast(store.selectedFile ? "Excel file selected." : "File selection cancelled.");
@@ -224,10 +120,9 @@
     if (!applyResponse(response)) {
       return;
     }
-    store.gatewayStatus = response.gatewayStatus || null;
-    store.selectedFiles = response.files || (store.gatewayStatus ? store.gatewayStatus.selectedFiles || [] : []);
-    store.selectedFile = response.selectedFile || (store.gatewayStatus ? store.gatewayStatus.selectedFile : null);
-    store.batchSelectionResult = response;
+    if (adapters && typeof adapters.applyBatchSelectionToStore === "function") {
+      adapters.applyBatchSelectionToStore(store, response);
+    }
     store.lastError = null;
     rerender();
     Toast.showToast(store.selectedFiles.length ? String(store.selectedFiles.length) + " Excel files selected." : "File selection cancelled.");
@@ -265,26 +160,30 @@
   function collectAutomationInput() {
     const conditionalWorkflowInput = document.getElementById("conditional-workflow-json");
     store.conditionalWorkflowText = conditionalWorkflowInput ? conditionalWorkflowInput.value : store.conditionalWorkflowText;
-
-    const selectedFile = store.selectedFile
-      || (store.gatewayStatus && store.gatewayStatus.selectedFile)
-      || null;
-
-    return {
-      selectedFile: selectedFile,
-      fileId: selectedFile ? selectedFile.fileId : "",
-      fileName: selectedFile ? selectedFile.name : "",
-      fileExtension: selectedFile ? selectedFile.extension : "",
-      conditionalWorkflowText: store.conditionalWorkflowText
-    };
+    return adapters && typeof adapters.buildConditionalWorkflowInput === "function"
+      ? adapters.buildConditionalWorkflowInput(store)
+      : {
+        selectedFile: null,
+        fileId: "",
+        fileName: "",
+        fileExtension: "",
+        conditionalWorkflowText: store.conditionalWorkflowText
+      };
   }
 
   function loadSampleConditionalWorkflow() {
-    store.conditionalWorkflowText = JSON.stringify(SAMPLE_CONDITIONAL_WORKFLOW, null, 2);
-    conditionalWorkflowDraftSessionVersion += 1;
+    const sampleDefinition = workflowSamples && typeof workflowSamples.getSampleTipoFlow === "function"
+      ? workflowSamples.getSampleTipoFlow()
+      : null;
+    store.conditionalWorkflowText = JSON.stringify(sampleDefinition || {}, null, 2);
+    if (draftSession && typeof draftSession.markEdited === "function") {
+      draftSession.markEdited();
+    }
     store.conditionalWorkflowParseError = "";
     rerender();
-    flushConditionalWorkflowDraftSave(store.conditionalWorkflowText).catch(function noop() {});
+    if (draftSession && typeof draftSession.flushSave === "function") {
+      draftSession.flushSave(store.conditionalWorkflowText).catch(function noop() {});
+    }
     Toast.showToast("Sample conditional workflow loaded.");
   }
 
@@ -294,7 +193,9 @@
     }
 
     const collected = collectAutomationInput();
-    await flushConditionalWorkflowDraftSave(collected.conditionalWorkflowText);
+    if (draftSession && typeof draftSession.flushSave === "function") {
+      await draftSession.flushSave(collected.conditionalWorkflowText);
+    }
     if (!collected.conditionalWorkflowText.trim()) {
       store.conditionalWorkflowParseError = "Conditional workflow JSON is required.";
       rerender();
@@ -336,10 +237,8 @@
     store.batchRunResult = shouldRunBatch ? response : null;
     store.lastRunSummary = response;
     store.lastError = response.error || null;
-    if (response.gatewayStatus) {
-      store.gatewayStatus = response.gatewayStatus;
-      store.selectedFile = response.gatewayStatus.selectedFile || store.selectedFile;
-      store.selectedFiles = response.gatewayStatus.selectedFiles || store.selectedFiles || [];
+    if (adapters && typeof adapters.applyGatewayStatusSnapshotToStore === "function") {
+      adapters.applyGatewayStatusSnapshotToStore(store, response);
     }
     rerender();
     Toast.showToast(
@@ -378,9 +277,13 @@
     };
     document.getElementById("detect-page-state").onclick = detectPageState;
     document.getElementById("conditional-workflow-json").addEventListener("input", function onInput(event) {
-      conditionalWorkflowDraftSessionVersion += 1;
+      if (draftSession && typeof draftSession.markEdited === "function") {
+        draftSession.markEdited();
+      }
       store.conditionalWorkflowText = event.target.value;
-      scheduleConditionalWorkflowDraftSave(store.conditionalWorkflowText);
+      if (draftSession && typeof draftSession.scheduleSave === "function") {
+        draftSession.scheduleSave(store.conditionalWorkflowText);
+      }
     });
     document.getElementById("load-sample-conditional-workflow").onclick = loadSampleConditionalWorkflow;
     document.getElementById("run-conditional-workflow").onclick = function onRunConditionalWorkflow() {
@@ -391,7 +294,9 @@
   function mount(root) {
     rootNode = root;
     rerender();
-    loadConditionalWorkflowDraft().catch(function noop() {});
+    if (draftSession && typeof draftSession.loadDraft === "function") {
+      draftSession.loadDraft().catch(function noop() {});
+    }
     refreshRuntimeStatus().catch(function noop() {});
     refreshGatewayStatus().catch(function noop() {});
   }

@@ -71,16 +71,16 @@
     }, details || {}));
   }
 
-  function buildItemResult(index, selectedFile, tabId, status, traceId, workflowResult, error) {
+  function buildItemResult(itemRunResult) {
     return {
-      index: index,
-      selectedFile: selectedFile || null,
-      tabId: typeof tabId === "number" ? tabId : null,
-      status: status,
-      traceId: traceId,
-      workflowRunJsonSave: workflowResult && workflowResult.workflowRunJsonSave ? workflowResult.workflowRunJsonSave : null,
-      workflowAhkFileSave: workflowResult && workflowResult.workflowAhkFileSave ? workflowResult.workflowAhkFileSave : null,
-      error: error || null
+      index: itemRunResult.index,
+      selectedFile: itemRunResult.selectedFile || null,
+      tabId: typeof itemRunResult.tabId === "number" ? itemRunResult.tabId : null,
+      status: itemRunResult.status,
+      traceId: itemRunResult.traceId,
+      workflowRunJsonSave: itemRunResult.workflowRunJsonSave || null,
+      workflowAhkFileSave: itemRunResult.workflowAhkFileSave || null,
+      error: itemRunResult.error || null
     };
   }
 
@@ -145,167 +145,58 @@
       }
 
       for (let index = 0; index < selectedFiles.length; index += 1) {
-        const sourceSelectedFile = selectedFiles[index];
-        const itemTraceId = Telemetry.createTraceId("conditional_item");
-        let activeSelectedFile = sourceSelectedFile;
-        let targetTab = null;
-        let workflowResult = null;
-        let itemError = null;
+        const itemRunResult = await NewSiteBackground.DeepSeekBatchItemRunner.runItem({
+          index: index,
+          traceId: Telemetry.createTraceId("conditional_item"),
+          sourceSelectedFile: selectedFiles[index],
+          workflowDefinition: workflowDefinition,
+          workflowId: workflowId,
+          input: input,
+          baseWindowId: baseWindowId,
+          isFirstItem: index === 0
+        });
 
-        try {
-          const activation = await NewSiteBackground.GatewayFileService.selectFileById(
-            itemTraceId,
-            sourceSelectedFile.fileId
-          );
-          activeSelectedFile = activation && activation.selectedFile
-            ? activation.selectedFile
-            : (activation && activation.gatewayStatus && activation.gatewayStatus.selectedFile
-              ? activation.gatewayStatus.selectedFile
-              : sourceSelectedFile);
+        baseWindowId = typeof itemRunResult.baseWindowId === "number"
+          ? itemRunResult.baseWindowId
+          : baseWindowId;
 
-          if (index === 0) {
-            targetTab = await NewSiteBackground.DeepSeekTabService.ensureReady(itemTraceId);
-            if (targetTab && typeof targetTab.windowId === "number") {
-              baseWindowId = targetTab.windowId;
-            }
-          } else {
-            targetTab = await NewSiteBackground.DeepSeekTabService.openFreshReady(itemTraceId, {
-              windowId: baseWindowId
-            });
-            if (targetTab && typeof targetTab.windowId === "number" && baseWindowId === null) {
-              baseWindowId = targetTab.windowId;
-            }
-          }
+        results.push(buildItemResult(itemRunResult));
 
-          workflowResult = await NewSiteBackground.DeepSeekConditionalWorkflow.run({
-            traceId: itemTraceId,
-            input: {
-              definition: workflowDefinition,
-              autoConnectGateway: false,
-              autoOpenDeepSeek: false,
-              autoSelectFileIfMissing: false,
-              fileId: activeSelectedFile && activeSelectedFile.fileId ? activeSelectedFile.fileId : "",
-              selectedFile: activeSelectedFile,
-              targetTabId: targetTab && typeof targetTab.id === "number" ? targetTab.id : null,
-              targetWindowId: targetTab && typeof targetTab.windowId === "number" ? targetTab.windowId : baseWindowId,
-              maxNodes: input.maxNodes
-            }
-          });
-
-          if (!workflowResult || workflowResult.status !== "completed") {
-            itemError = workflowResult && workflowResult.error
-              ? workflowResult.error
-              : buildBatchError(
-                "CONDITIONAL_WORKFLOW_BATCH_ITEM_FAILED",
-                "A batch workflow item did not complete successfully.",
-                {
-                  traceId: itemTraceId,
-                  workflowId: workflowId,
-                  failedStage: workflowResult && workflowResult.stage ? workflowResult.stage : "run_conditional_workflow",
-                  expected: "Each batch item should complete successfully.",
-                  actual: "The workflow result returned failed or invalid status."
-                }
-              );
-            failedCount += 1;
-            results.push(buildItemResult(
-              index,
-              activeSelectedFile,
-              targetTab && targetTab.id,
-              "failed",
-              itemTraceId,
-              workflowResult,
-              itemError
-            ));
-
-            if (!input.continueOnError) {
-              await emitBatchEvent(
-                TELEMETRY_EVENTS.CONDITIONAL_WORKFLOW_BATCH_FAILED,
-                "error",
-                traceId,
-                workflowId,
-                batchId,
-                itemError.message,
-                {
-                  totalCount: selectedFiles.length,
-                  completedCount: completedCount,
-                  failedCount: failedCount,
-                  failedIndex: index,
-                  failedFileId: activeSelectedFile && activeSelectedFile.fileId ? activeSelectedFile.fileId : "",
-                  actual: itemError.actual || itemError.message
-                }
-              );
-              return {
-                status: "failed",
-                traceId: traceId,
-                workflowId: workflowId,
-                batchId: batchId,
-                totalCount: selectedFiles.length,
-                completedCount: completedCount,
-                failedCount: failedCount,
-                results: results,
-                error: itemError
-              };
-            }
-
-            continue;
-          }
-
+        if (itemRunResult.status === "completed") {
           completedCount += 1;
-          results.push(buildItemResult(
-            index,
-            workflowResult.selectedFile || activeSelectedFile,
-            targetTab && targetTab.id,
-            "completed",
-            itemTraceId,
-            workflowResult,
-            null
-          ));
-        } catch (error) {
-          itemError = Errors.toStructuredError(error);
-          itemError.traceId = itemError.traceId || itemTraceId;
-          itemError.workflowId = itemError.workflowId || workflowId || "";
-          itemError.failedStage = itemError.failedStage || "conditional_workflow_batch_item";
-          itemError.probableCause = itemError.probableCause || MODULE_FILE;
-          failedCount += 1;
-          results.push(buildItemResult(
-            index,
-            activeSelectedFile,
-            targetTab && targetTab.id,
-            "failed",
-            itemTraceId,
-            workflowResult,
-            itemError
-          ));
+          continue;
+        }
 
-          if (!input.continueOnError) {
-            await emitBatchEvent(
-              TELEMETRY_EVENTS.CONDITIONAL_WORKFLOW_BATCH_FAILED,
-              "error",
-              traceId,
-              workflowId,
-              batchId,
-              itemError.message,
-              {
-                totalCount: selectedFiles.length,
-                completedCount: completedCount,
-                failedCount: failedCount,
-                failedIndex: index,
-                failedFileId: activeSelectedFile && activeSelectedFile.fileId ? activeSelectedFile.fileId : "",
-                actual: itemError.actual || itemError.message
-              }
-            );
-            return {
-              status: "failed",
-              traceId: traceId,
-              workflowId: workflowId,
-              batchId: batchId,
+        failedCount += 1;
+
+        if (!input.continueOnError) {
+          await emitBatchEvent(
+            TELEMETRY_EVENTS.CONDITIONAL_WORKFLOW_BATCH_FAILED,
+            "error",
+            traceId,
+            workflowId,
+            batchId,
+            itemRunResult.error.message,
+            {
               totalCount: selectedFiles.length,
               completedCount: completedCount,
               failedCount: failedCount,
-              results: results,
-              error: itemError
-            };
-          }
+              failedIndex: index,
+              failedFileId: itemRunResult.selectedFile && itemRunResult.selectedFile.fileId ? itemRunResult.selectedFile.fileId : "",
+              actual: itemRunResult.error.actual || itemRunResult.error.message
+            }
+          );
+          return {
+            status: "failed",
+            traceId: traceId,
+            workflowId: workflowId,
+            batchId: batchId,
+            totalCount: selectedFiles.length,
+            completedCount: completedCount,
+            failedCount: failedCount,
+            results: results,
+            error: itemRunResult.error
+          };
         }
       }
 

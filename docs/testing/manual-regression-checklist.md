@@ -139,6 +139,12 @@ Use this checklist after each refactor phase. The goal is to confirm that modula
 - [ ] Confirm response writer tests pass.
 - [ ] Open a saved response JSON and confirm UTF-8 characters are preserved without ASCII escaping.
 
+## Architecture Docs
+
+- [ ] Open `docs/architecture/current-modularization-map.md`.
+- [ ] Confirm it matches the active runtime owners and loader order for the current phase.
+- [ ] Confirm it does not describe inactive modules as current runtime owners.
+
 ## Completion Gate
 
 Do not advance to the next refactor phase unless:
