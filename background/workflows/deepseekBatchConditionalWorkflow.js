@@ -35,6 +35,8 @@
       definition: null,
       selectedFiles: [],
       continueOnError: false,
+      retryMode: "full_batch",
+      retryCount: 0,
       autoConnectGateway: true,
       maxNodes: null,
       targetWindowId: null,
@@ -90,6 +92,11 @@
     const input = normalizedMessage.input;
     const batchId = input.batchId || Telemetry.createTraceId("batch");
     const selectedFiles = normalizeSelectedFiles(input.selectedFiles);
+    const selectedFileIds = selectedFiles
+      .map(function mapSelectedFileId(file) {
+        return file && file.fileId ? file.fileId : "";
+      })
+      .filter(Boolean);
 
     let workflowDefinition = null;
     let workflowId = "";
@@ -114,6 +121,10 @@
         "Conditional workflow batch started",
         {
           totalCount: selectedFiles.length,
+          continueOnError: input.continueOnError === true,
+          runMode: input.retryMode || "full_batch",
+          retryCount: typeof input.retryCount === "number" ? input.retryCount : 0,
+          selectedFileIds: selectedFileIds,
           expected: "The conditional workflow batch should run each selected file sequentially."
         }
       );
@@ -181,6 +192,10 @@
               totalCount: selectedFiles.length,
               completedCount: completedCount,
               failedCount: failedCount,
+              continueOnError: false,
+              runMode: input.retryMode || "full_batch",
+              retryCount: typeof input.retryCount === "number" ? input.retryCount : 0,
+              selectedFileIds: selectedFileIds,
               failedIndex: index,
               failedFileId: itemRunResult.selectedFile && itemRunResult.selectedFile.fileId ? itemRunResult.selectedFile.fileId : "",
               actual: itemRunResult.error.actual || itemRunResult.error.message
@@ -211,6 +226,18 @@
           totalCount: selectedFiles.length,
           completedCount: completedCount,
           failedCount: failedCount,
+          continueOnError: input.continueOnError === true,
+          continuedAfterFailure: input.continueOnError === true && failedCount > 0,
+          runMode: input.retryMode || "full_batch",
+          retryCount: typeof input.retryCount === "number" ? input.retryCount : 0,
+          selectedFileIds: selectedFileIds,
+          failedFileIds: results
+            .filter(function filterFailedResult(item) {
+              return item && item.status === "failed" && item.selectedFile && item.selectedFile.fileId;
+            })
+            .map(function mapFailedResult(item) {
+              return item.selectedFile.fileId;
+            }),
           actual: "Batch completed with " + String(completedCount) + " successful items."
         }
       );
@@ -243,6 +270,10 @@
           totalCount: selectedFiles.length,
           completedCount: completedCount,
           failedCount: failedCount,
+          continueOnError: input.continueOnError === true,
+          runMode: input.retryMode || "full_batch",
+          retryCount: typeof input.retryCount === "number" ? input.retryCount : 0,
+          selectedFileIds: selectedFileIds,
           actual: structured.actual || structured.message
         }
       );

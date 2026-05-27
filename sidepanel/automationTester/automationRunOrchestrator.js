@@ -23,7 +23,9 @@
         selectedFiles: Array.isArray(input.selectedFiles) ? input.selectedFiles : [],
         continueOnError: input && input.continueOnError === true,
         autoConnectGateway: true,
-        maxNodes: input && typeof input.maxNodes !== "undefined" ? input.maxNodes : null
+        maxNodes: input && typeof input.maxNodes !== "undefined" ? input.maxNodes : null,
+        retryMode: input && input.retryMode ? input.retryMode : "full_batch",
+        retryCount: input && typeof input.retryCount === "number" ? input.retryCount : 0
       }
     });
   }

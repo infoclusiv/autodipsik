@@ -101,6 +101,11 @@
       return "";
     }
 
+    const failedBatchFiles = Array.isArray(viewModel.store.failedBatchFiles)
+      ? viewModel.store.failedBatchFiles
+      : [];
+    const isWorkflowRunning = viewModel.store.isRunningConditionalWorkflow || viewModel.store.isRunningBatchConditionalWorkflow;
+
     return [
       "<div class='card'>",
       "<h3>Batch Run Summary</h3>",
@@ -129,6 +134,23 @@
         : "<div class='muted'>No batch results yet.</div>"),
       (viewModel.batchRunResult.error
         ? "<p class='warning-text'>Batch error: " + escapeHtml(viewModel.batchRunResult.error.message || "Unknown error") + "</p>"
+        : ""),
+      (failedBatchFiles.length
+        ? "<div class='stack-blocks'>"
+          + "<div><label>Failed files</label>"
+          + failedBatchFiles.map(function mapFailedFile(file, index) {
+            return "<div class='timeline-item'><strong>"
+              + escapeHtml(String(index + 1))
+              + ". "
+              + escapeHtml(file && file.name ? file.name : "Unknown")
+              + "</strong><div>"
+              + escapeHtml((file && file.extension ? file.extension : "Unknown extension") + " | File ID: " + (file && file.fileId ? file.fileId : "Unknown"))
+              + "</div></div>";
+          }).join("")
+          + "</div></div>"
+        : ""),
+      (failedBatchFiles.length && !isWorkflowRunning
+        ? "<div class='button-row'><button id='automation-retry-failed-files'>Retry failed files</button></div>"
         : ""),
       "</div>"
     ].join("");

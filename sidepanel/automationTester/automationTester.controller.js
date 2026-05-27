@@ -32,6 +32,64 @@
     bindEvents();
   }
 
+  function deriveFailedBatchFiles(response) {
+    if (!response || !Array.isArray(response.results)) {
+      return [];
+    }
+
+    return response.results.reduce(function collectFailedFiles(failedFiles, item) {
+      if (!item || item.status !== "failed" || !item.selectedFile || !item.selectedFile.fileId) {
+        return failedFiles;
+      }
+
+      failedFiles.push({
+        fileId: item.selectedFile.fileId,
+        name: item.selectedFile.name || "",
+        extension: item.selectedFile.extension || "",
+        index: typeof item.index === "number" ? item.index : failedFiles.length
+      });
+      return failedFiles;
+    }, []);
+  }
+
+  async function parseConditionalWorkflowDefinition() {
+    const collected = collectAutomationInput();
+    if (draftSession && typeof draftSession.flushSave === "function") {
+      await draftSession.flushSave(collected.conditionalWorkflowText);
+    }
+    if (!collected.conditionalWorkflowText.trim()) {
+      store.conditionalWorkflowParseError = "Conditional workflow JSON is required.";
+      rerender();
+      Toast.showToast("Conditional workflow JSON is required.");
+      return null;
+    }
+
+    try {
+      const definition = JSON.parse(collected.conditionalWorkflowText);
+      store.conditionalWorkflowParseError = "";
+      return definition;
+    } catch (error) {
+      store.conditionalWorkflowParseError = error && error.message ? error.message : "Invalid JSON.";
+      rerender();
+      Toast.showToast("Conditional workflow JSON is invalid.");
+      return null;
+    }
+  }
+
+  function applyBatchRunResponse(response) {
+    store.isRunningConditionalWorkflow = false;
+    store.isRunningBatchConditionalWorkflow = false;
+    store.conditionalWorkflowResult = null;
+    store.batchRunResult = response;
+    store.failedBatchFiles = deriveFailedBatchFiles(response);
+    store.lastRunSummary = response;
+    store.lastError = response.error || null;
+    if (adapters && typeof adapters.applyGatewayStatusSnapshotToStore === "function") {
+      adapters.applyGatewayStatusSnapshotToStore(store, response);
+    }
+    rerender();
+  }
+
   function applyResponse(response) {
     if (adapters && typeof adapters.applyGatewayStatusSnapshotToStore === "function") {
       adapters.applyGatewayStatusSnapshotToStore(store, response);
@@ -108,6 +166,8 @@
     if (adapters && typeof adapters.applyFileSelectionToStore === "function") {
       adapters.applyFileSelectionToStore(store, response);
     }
+    store.failedBatchFiles = [];
+    store.failedBatchRetryCount = 0;
     store.lastError = null;
     rerender();
     Toast.showToast(store.selectedFile ? "Excel file selected." : "File selection cancelled.");
@@ -123,6 +183,8 @@
     if (adapters && typeof adapters.applyBatchSelectionToStore === "function") {
       adapters.applyBatchSelectionToStore(store, response);
     }
+    store.failedBatchFiles = [];
+    store.failedBatchRetryCount = 0;
     store.lastError = null;
     rerender();
     Toast.showToast(store.selectedFiles.length ? String(store.selectedFiles.length) + " Excel files selected." : "File selection cancelled.");
@@ -192,32 +254,18 @@
       return;
     }
 
-    const collected = collectAutomationInput();
-    if (draftSession && typeof draftSession.flushSave === "function") {
-      await draftSession.flushSave(collected.conditionalWorkflowText);
-    }
-    if (!collected.conditionalWorkflowText.trim()) {
-      store.conditionalWorkflowParseError = "Conditional workflow JSON is required.";
-      rerender();
-      Toast.showToast("Conditional workflow JSON is required.");
+    const definition = await parseConditionalWorkflowDefinition();
+    if (!definition) {
       return;
     }
-
-    let definition;
-    try {
-      definition = JSON.parse(collected.conditionalWorkflowText);
-    } catch (error) {
-      store.conditionalWorkflowParseError = error && error.message ? error.message : "Invalid JSON.";
-      rerender();
-      Toast.showToast("Conditional workflow JSON is invalid.");
-      return;
-    }
-
-    store.conditionalWorkflowParseError = "";
     store.conditionalWorkflowResult = null;
     store.batchRunResult = null;
     const selectedFiles = Array.isArray(store.selectedFiles) ? store.selectedFiles : [];
     const shouldRunBatch = selectedFiles.length > 1;
+    if (shouldRunBatch) {
+      store.failedBatchFiles = [];
+      store.failedBatchRetryCount = 0;
+    }
     store.isRunningConditionalWorkflow = !shouldRunBatch;
     store.isRunningBatchConditionalWorkflow = shouldRunBatch;
     rerender();
@@ -225,28 +273,37 @@
     const response = shouldRunBatch
       ? await orchestrator.runConditionalWorkflowBatch({
         definition: definition,
-        selectedFiles: selectedFiles
+        selectedFiles: selectedFiles,
+        continueOnError: true,
+        retryMode: "full_batch",
+        retryCount: 0
       })
       : await orchestrator.runConditionalWorkflow({
         definition: definition
       });
 
-    store.isRunningConditionalWorkflow = false;
-    store.isRunningBatchConditionalWorkflow = false;
-    store.conditionalWorkflowResult = shouldRunBatch ? null : response;
-    store.batchRunResult = shouldRunBatch ? response : null;
-    store.lastRunSummary = response;
-    store.lastError = response.error || null;
-    if (adapters && typeof adapters.applyGatewayStatusSnapshotToStore === "function") {
-      adapters.applyGatewayStatusSnapshotToStore(store, response);
+    if (shouldRunBatch) {
+      applyBatchRunResponse(response);
+    } else {
+      store.isRunningConditionalWorkflow = false;
+      store.isRunningBatchConditionalWorkflow = false;
+      store.conditionalWorkflowResult = response;
+      store.batchRunResult = null;
+      store.lastRunSummary = response;
+      store.lastError = response.error || null;
+      if (adapters && typeof adapters.applyGatewayStatusSnapshotToStore === "function") {
+        adapters.applyGatewayStatusSnapshotToStore(store, response);
+      }
+      rerender();
     }
-    rerender();
     Toast.showToast(
       shouldRunBatch
         ? (response.status === "completed"
           ? "Batch conditional workflow completed. " + String(response.completedCount || 0) + " of " + String(response.totalCount || 0) + " files processed."
+          : (response.totalCount || 0) > 1 && (response.completedCount || 0) + (response.failedCount || 0) === (response.totalCount || 0)
+          ? "Batch conditional workflow finished with " + String(response.failedCount || 0) + " failure" + ((response.failedCount || 0) === 1 ? "" : "s") + ". " + String(response.completedCount || 0) + " of " + String(response.totalCount || 0) + " files processed."
           : response.error && response.error.message
-          ? "Batch stopped on " + String(response.failedCount || 0) + " failure: " + response.error.message
+          ? "Batch conditional workflow failed: " + response.error.message
           : "Batch conditional workflow failed.")
         : (response.status === "completed"
           ? (response.workflowAhkFileSave && response.workflowAhkFileSave.fileName
@@ -256,6 +313,57 @@
             : "Conditional workflow executed.")
           : (response.error && response.error.message ? response.error.message : "Conditional workflow failed."))
     );
+  }
+
+  async function retryFailedBatchFiles() {
+    if (store.isRunningConditionalWorkflow || store.isRunningBatchConditionalWorkflow) {
+      return;
+    }
+
+    const failedBatchFiles = Array.isArray(store.failedBatchFiles) ? store.failedBatchFiles : [];
+    if (!failedBatchFiles.length) {
+      Toast.showToast("No failed files are available to retry.");
+      return;
+    }
+
+    const definition = await parseConditionalWorkflowDefinition();
+    if (!definition) {
+      return;
+    }
+
+    store.conditionalWorkflowResult = null;
+    store.batchRunResult = null;
+    store.failedBatchFiles = [];
+    store.failedBatchRetryCount += 1;
+    store.isRunningConditionalWorkflow = false;
+    store.isRunningBatchConditionalWorkflow = true;
+    rerender();
+
+    try {
+      const response = await orchestrator.runConditionalWorkflowBatch({
+        definition: definition,
+        selectedFiles: failedBatchFiles,
+        continueOnError: true,
+        retryMode: "failed_only",
+        retryCount: store.failedBatchRetryCount
+      });
+
+      applyBatchRunResponse(response);
+      Toast.showToast(
+        response.status === "completed"
+          ? "Retry completed. " + String(response.completedCount || 0) + " of " + String(response.totalCount || 0) + " failed files processed."
+          : (response.totalCount || 0) > 0 && (response.completedCount || 0) + (response.failedCount || 0) === (response.totalCount || 0)
+          ? "Retry finished with " + String(response.failedCount || 0) + " remaining failure" + ((response.failedCount || 0) === 1 ? "" : "s") + "."
+          : response.error && response.error.message
+          ? "Retry failed: " + response.error.message
+          : "Retry failed."
+      );
+    } catch (error) {
+      store.isRunningBatchConditionalWorkflow = false;
+      store.lastError = error || null;
+      rerender();
+      Toast.showToast(error && error.message ? error.message : "Retry failed.");
+    }
   }
 
   function bindEvents() {
@@ -289,6 +397,12 @@
     document.getElementById("run-conditional-workflow").onclick = function onRunConditionalWorkflow() {
       runConditionalWorkflow();
     };
+    const retryFailedFilesButton = document.getElementById("automation-retry-failed-files");
+    if (retryFailedFilesButton) {
+      retryFailedFilesButton.onclick = function onRetryFailedFiles() {
+        retryFailedBatchFiles();
+      };
+    }
   }
 
   function mount(root) {

@@ -9,6 +9,8 @@
       fileSelectionResult: null,
       batchSelectionResult: null,
       batchRunResult: null,
+      failedBatchFiles: [],
+      failedBatchRetryCount: 0,
       runtimeStatus: null,
       pageState: null,
       conditionalWorkflowText: "",
